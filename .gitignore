@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Source footage and rendered videos (too big for git)
+rare/
+out/
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.wav
+*.mp3
+!app/samples/*.mp4
+
+# Secrets
+.env
+.env.*
+
+# OS / editor junk
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+*.log

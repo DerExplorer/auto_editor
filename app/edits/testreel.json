@@ -1,0 +1,106 @@
+{
+  "name": "testreel",
+  "inputs": ["TestReel.MP4"],
+
+  "cut": {
+    "removePauses": true,
+    "removeRetakes": true,
+    "maxPauseMs": 450,
+    "remove": [
+      { "from": "Вопрос А", "to": { "phrase": "Вариант А", "after": "Вопрос пятый" } },
+      { "from": "Вариант В", "to": "Если ты набрал" }
+    ]
+  },
+
+  "sections": [
+    { "to": "Итак вопрос первый" },
+    { "from": "Итак вопрос первый", "to": "Вопрос второй" },
+    { "from": "Вопрос второй", "to": "Вопрос третий" },
+    { "from": "Вопрос третий", "to": "Вопрос четвертый" },
+    { "from": "Вопрос четвертый", "to": "Вопрос пятый" },
+    { "from": "Вопрос пятый", "to": "Если ты набрал" },
+    { "from": "Если ты набрал", "transition": { "type": "fade", "durationMs": 300 } }
+  ],
+  "transition": { "type": "slide", "durationMs": 350 },
+
+  "format": "9:16",
+  "fit": "crop",
+  "focus": { "x": 0.5, "y": 0.4 },
+  "punchIn": 1.07,
+
+  "zooms": [
+    { "start": "90 людей", "durationMs": 1600, "scale": 1.1 },
+    { "start": "Правильный ответ В", "durationMs": 1400 },
+    { "start": "Правильный ответ Б", "durationMs": 1400 },
+    { "start": { "phrase": "Ответ В", "after": "Вопрос третий" }, "durationMs": 1400 },
+    { "start": { "phrase": "Ответ В", "after": "Вопрос четвертый" }, "durationMs": 1400 },
+    { "start": { "phrase": "Правильный ответ В", "after": "Вопрос пятый" }, "durationMs": 1400 }
+  ],
+
+  "titles": [
+    { "text": "90% людей ошибаются. А ты?", "start": "90 людей", "end": { "phrase": "отправь друзьям", "edge": "end" } },
+    { "text": "3+ верных — ты знаешь мир лучше большинства", "start": "Если ты набрал", "end": { "phrase": "населения Земли", "edge": "end", "offsetMs": 300 } },
+    { "text": "Книга и автор — в описании", "start": "Оставлю автора", "end": { "phrase": "в описании", "edge": "end", "offsetMs": 400 } }
+  ],
+
+  "cards": [
+    {
+      "title": "Вопрос 1 / 5",
+      "question": "Доля людей в крайней бедности за 20 лет…",
+      "options": ["удвоилась", "осталась прежней", "сократилась вдвое"],
+      "answer": 2,
+      "start": "Итак вопрос первый",
+      "answerAt": "Правильный ответ В"
+    },
+    {
+      "title": "Вопрос 2 / 5",
+      "question": "Где живёт большая часть людей на планете?",
+      "options": ["в бедных странах", "в странах со средним доходом", "в богатых странах"],
+      "answer": 1,
+      "start": "Вопрос второй",
+      "answerAt": "Правильный ответ Б"
+    },
+    {
+      "title": "Вопрос 3 / 5",
+      "question": "Сколько девочек в бедных странах заканчивают начальную школу?",
+      "options": ["20%", "40%", "60%"],
+      "answer": 2,
+      "start": { "phrase": "Вопрос третий", "nth": 2 },
+      "answerAt": { "phrase": "Ответ В", "after": "Вопрос третий" }
+    },
+    {
+      "title": "Вопрос 4 / 5",
+      "question": "Сколько годовалых детей в мире привиты хотя бы от одной болезни?",
+      "options": ["20%", "50%", "80%"],
+      "answer": 2,
+      "start": "Вопрос четвертый",
+      "end": "80 вакцинирован",
+      "answerAt": { "phrase": "Ответ В", "after": "Вопрос четвертый" }
+    },
+    {
+      "title": "Вопрос 5 / 5",
+      "question": "Сколько людей в мире имеют доступ к электричеству?",
+      "options": ["20%", "50%", "80%"],
+      "answer": 2,
+      "start": "Вопрос пятый",
+      "answerAt": { "phrase": "Правильный ответ В", "after": "Вопрос пятый" }
+    }
+  ],
+
+  "broll": [
+    { "src": "assets/broll/poverty.svg", "mode": "pip", "start": "Правильный ответ В" },
+    { "src": "assets/broll/vaccine.svg", "mode": "full", "start": "80 вакцинирован", "end": { "phrase": "80 вакцинирован", "edge": "end", "offsetMs": 400 } }
+  ],
+
+  "logo": { "src": "assets/logo.svg", "position": "top-right", "widthPct": 16, "opacity": 0.85 },
+  "progressBar": { "position": "top" },
+  "intro": { "title": "5 фактов о мире", "subtitle": "проверь себя", "durationMs": 1500 },
+  "outro": { "title": "Подписывайся", "subtitle": "здесь много интересного", "durationMs": 2000 },
+  "style": { "accent": "#FFD60A", "cardPosition": "bottom" },
+
+  "versions": [
+    { "name": "9x16" },
+    { "name": "1x1", "format": "1:1", "focus": { "x": 0.5, "y": 0.3 } },
+    { "name": "16x9", "format": "16:9", "fit": "blur", "style": { "cardPosition": "right" } }
+  ]
+}

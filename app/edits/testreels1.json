@@ -1,0 +1,214 @@
+{
+  "name": "testreels1",
+  "inputs": [
+    "TestReels1.MP4"
+  ],
+  "cut": {
+    "removePauses": false,
+    "removeRetakes": false
+  },
+  "format": "9:16",
+  "fit": "crop",
+  "focus": {
+    "x": 0.5,
+    "y": 0.45
+  },
+  "hook": {
+    "durationMs": 3000,
+    "words": [
+      {
+        "text": "90%",
+        "size": "xl",
+        "accent": true
+      },
+      {
+        "text": "людей",
+        "size": "l"
+      },
+      {
+        "text": "ошибаются",
+        "size": "m",
+        "br": true
+      },
+      {
+        "text": "в 5 фактах",
+        "size": "s"
+      }
+    ]
+  },
+  "subtitles": {
+    "bottomPct": 0.24,
+    "maxWidthPct": 0.69
+  },
+  "bottomGradient": {
+    "heightPct": 0.34,
+    "opacity": 0.78
+  },
+  "cards": [
+    {
+      "title": "Вопрос 1 из 5",
+      "question": "Доля людей в крайней бедности за 20 лет",
+      "options": [
+        "выросла вдвое",
+        "та же",
+        "упала вдвое"
+      ],
+      "answer": 2,
+      "start": "Итак вопрос первый",
+      "end": {
+        "phrase": "Вопрос второй",
+        "offsetMs": -150
+      },
+      "answerAt": "Правильный ответ"
+    },
+    {
+      "title": "Вопрос 2 из 5",
+      "question": "В каких странах живёт большинство людей?",
+      "options": [
+        "в бедных",
+        "в средних",
+        "в богатых"
+      ],
+      "answer": 1,
+      "start": "Вопрос второй",
+      "end": {
+        "phrase": "Вопрос третий",
+        "offsetMs": -150
+      },
+      "answerAt": {
+        "phrase": "Правильный ответ",
+        "after": "Вопрос второй"
+      }
+    },
+    {
+      "title": "Вопрос 3 из 5",
+      "question": "Сколько девочек в бедных странах заканчивают начальную школу?",
+      "options": [
+        "20%",
+        "40%",
+        "60%"
+      ],
+      "answer": 2,
+      "start": "Вопрос третий",
+      "end": {
+        "phrase": "Вопрос четвертый",
+        "offsetMs": -150
+      },
+      "answerAt": {
+        "phrase": "в 60",
+        "nth": 2
+      }
+    },
+    {
+      "title": "Вопрос 4 из 5",
+      "question": "Сколько годовалых детей привиты хотя бы от одной болезни?",
+      "options": [
+        "20%",
+        "50%",
+        "80%"
+      ],
+      "answer": 2,
+      "start": "Вопрос четвертый",
+      "end": {
+        "phrase": "Вариант В 80",
+        "nth": 2,
+        "offsetMs": 1200
+      },
+      "answerAt": {
+        "phrase": "Вариант В 80",
+        "nth": 2
+      }
+    },
+    {
+      "title": "Вопрос 5 из 5",
+      "question": "Сколько людей в мире имеют доступ к электричеству?",
+      "options": [
+        "20%",
+        "50%",
+        "80%"
+      ],
+      "answer": 2,
+      "start": "Вопрос пятый",
+      "end": {
+        "phrase": "все эти факты",
+        "offsetMs": -300
+      },
+      "answerAt": {
+        "phrase": "Правильный ответ",
+        "after": "Вопрос пятый"
+      }
+    }
+  ],
+  "broll": [
+    {
+      "type": "bars",
+      "mode": "pip",
+      "data": {
+        "title": "Бедность",
+        "bars": [
+          {
+            "label": "тогда",
+            "value": 2
+          },
+          {
+            "label": "сейчас",
+            "value": 1
+          }
+        ],
+        "badge": "−50%"
+      },
+      "start": "Правильный ответ",
+      "end": {
+        "phrase": "Вопрос второй",
+        "offsetMs": -150
+      }
+    },
+    {
+      "type": "ring",
+      "mode": "full",
+      "data": {
+        "chip": "Правильный ответ",
+        "value": 80,
+        "caption": "детей в мире привиты хотя бы от одной болезни"
+      },
+      "start": {
+        "phrase": "Вариант В 80",
+        "nth": 2,
+        "offsetMs": 1200
+      },
+      "end": {
+        "phrase": "Вопрос пятый",
+        "offsetMs": -250
+      }
+    }
+  ],
+  "titles": [
+    {
+      "text": "Автор и книга — в описании",
+      "start": "Оставлю автора",
+      "end": {
+        "phrase": "в описании",
+        "edge": "end",
+        "offsetMs": 400
+      }
+    }
+  ],
+  "versions": [
+    {
+      "name": "9x16"
+    }
+  ],
+  "camera": {
+    "inMin": 1.07,
+    "inMax": 1.15,
+    "maxWithOverlay": 1.1,
+    "peaks": [
+      {
+        "at": "пессимистично",
+        "scale": 1.25,
+        "holdMs": 900,
+        "rampMs": 300
+      }
+    ]
+  }
+}
