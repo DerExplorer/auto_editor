@@ -18,6 +18,7 @@ const defaultProps: EditProps = {
   titles: [],
   cards: [],
   hook: null,
+  inset: null,
   bottomGradient: null,
   progressBar: null,
   subtitles: { bottomPct: 0.24, maxWidthPct: 0.69, blocks: [] },

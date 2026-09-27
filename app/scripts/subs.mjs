@@ -98,7 +98,7 @@ const align = (A, B) => {
   return map;
 };
 
-export const buildBlocks = (text, words, { holdMs = 700, lineChars = 21 } = {}) => {
+export const buildBlocks = (text, words, { holdMs = 700, lineChars = 19 } = {}) => {
   const blocks = text
     .split(/\r?\n/)
     .map((l) => l.trim())

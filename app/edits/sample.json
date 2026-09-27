@@ -1,0 +1,30 @@
+{
+  "name": "sample",
+  "inputs": ["app/samples/clip1.mp4", "app/samples/clip2.mp4"],
+
+  "format": "9:16",
+  "fit": "crop",
+  "focus": { "x": 0.5, "y": 0.45 },
+
+  "hook": {
+    "durationMs": 2500,
+    "words": [
+      { "text": "тест", "size": "xl", "accent": true },
+      { "text": "монтажёра", "size": "m", "br": true }
+    ]
+  },
+
+  "titles": [{ "text": "второй клип", "start": "А это второй клип", "durationMs": 1500 }],
+
+  "broll": [
+    {
+      "type": "ring",
+      "mode": "full",
+      "data": { "chip": "проверка", "value": 80, "caption": "инфографика на весь экран" },
+      "start": "Он должен идти",
+      "durationMs": 1800
+    }
+  ],
+
+  "versions": [{ "name": "9x16" }]
+}

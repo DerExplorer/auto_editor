@@ -28,11 +28,20 @@ export type BRollContent =
   | { kind: "ring"; chip?: string; value: number; caption: string };
 export type BRollItem = Span & { mode: "full" | "pip"; content: BRollContent };
 
-export type TitleItem = Span & { text: string; position: "top" | "center" };
+export type TitleItem = Span & { text: string; position: "top" | "center"; topPct?: number };
 export type CardItem = Span & { title: string; question: string; options: string[]; answer?: number; answerOutMs?: number };
 
 export type HookWord = { text: string; size: "s" | "m" | "l" | "xl"; accent?: boolean; br?: boolean };
-export type Hook = { words: HookWord[]; durationMs: number };
+export type Hook = { words: HookWord[]; durationMs: number; topPct?: number };
+
+// Видео в рамке поверх рассказчика (например, горизонтальная реклама по центру кадра).
+// pieces — куски исходника, выложенные подряд на выходном таймлайне (хард-каты внутри рамки).
+export type Inset = Span & {
+  topPct: number;
+  widthPct: number;
+  volume: number;
+  pieces: { src: string; outFromMs: number; outToMs: number; srcFromMs: number }[];
+};
 
 export type EditProps = {
   width: number;
@@ -47,6 +56,7 @@ export type EditProps = {
   titles: TitleItem[];
   cards: CardItem[];
   hook: Hook | null;
+  inset: Inset | null;
   bottomGradient: null | { heightPct: number; opacity: number };
   progressBar: null | { position: "top" | "bottom" };
   subtitles: SubtitleStyle;

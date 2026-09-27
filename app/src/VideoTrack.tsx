@@ -13,8 +13,8 @@ const zoomAt = (zooms: Zoom[], ms: number) =>
     return acc * (1 + (z.scale - 1) * ease(env));
   }, 1);
 
-// Камера: плавный переход между ключами (длительность перехода = rampMs), в удержании после
-// приближения — лёгкий дрейф вперёд; пики — короткие сильные наезды; caps — потолок под графикой.
+// Камера: плавный переход между ключами (длительность перехода = rampMs);
+// пики — ручные сильные наезды; caps — потолок под графикой.
 const cameraAt = (cam: Camera, ms: number) => {
   let scale = 1;
   for (let i = 0; i < cam.keys.length; i++) {
@@ -22,9 +22,7 @@ const cameraAt = (cam: Camera, ms: number) => {
     if (ms < k.atMs) break;
     const prev = i > 0 ? cam.keys[i - 1].scale : k.scale;
     const p = k.rampMs > 0 ? Math.min(1, (ms - k.atMs) / k.rampMs) : 1;
-    const holdEnd = cam.keys[i + 1]?.atMs ?? ms;
-    const drift = k.scale > 1.02 && holdEnd > k.atMs + k.rampMs ? 0.015 * Math.max(0, Math.min(1, (ms - k.atMs - k.rampMs) / (holdEnd - k.atMs - k.rampMs))) : 0;
-    scale = prev + (k.scale - prev) * ease(p) + drift;
+    scale = prev + (k.scale - prev) * ease(p);
   }
   for (const pk of cam.peaks) {
     if (ms < pk.outFromMs || ms > pk.outToMs + 500) continue;

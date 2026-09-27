@@ -1,13 +1,13 @@
 import React from "react";
 import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
-import { BottomGradient, BRoll, HookTitle, ProgressBar, QuizCard, TitlePlate } from "./Graphics";
+import { BottomGradient, BRoll, HookTitle, InsetVideo, ProgressBar, QuizCard, TitlePlate } from "./Graphics";
 import { Subtitles } from "./Subtitles";
 import "./theme";
 import type { EditProps, Span } from "./types";
 import { SegmentView } from "./VideoTrack";
 
 // Все времена в props уже в выходном таймлайне — считает scripts/build.mjs.
-// Порядок слоёв: видео → b-roll → градиент → графика → хук → субтитры (всегда сверху).
+// Порядок слоёв: видео → b-roll → градиент → видео в рамке → графика → хук → субтитры (всегда сверху).
 export const Edit: React.FC<EditProps> = (p) => {
   const { fps } = useVideoConfig();
   const f = (ms: number) => Math.round((ms / 1000) * fps);
@@ -26,6 +26,11 @@ export const Edit: React.FC<EditProps> = (p) => {
         </Sequence>
       ))}
       {p.bottomGradient && <BottomGradient {...p.bottomGradient} />}
+      {p.inset && (
+        <Sequence {...at(p.inset)}>
+          <InsetVideo inset={p.inset} />
+        </Sequence>
+      )}
       {p.cards.map((c, i) => (
         <Sequence key={`card${i}`} {...at(c)}>
           <QuizCard card={c} />

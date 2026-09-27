@@ -1,0 +1,116 @@
+{
+  "name": "reel2",
+  "inputs": [
+    "Reel2.MP4"
+  ],
+  "cut": {
+    "removePauses": false,
+    "removeRetakes": false
+  },
+  "format": "9:16",
+  "fit": "crop",
+  "focus": {
+    "x": 0.5,
+    "y": 0.3
+  },
+  "hook": {
+    "durationMs": 3000,
+    "topPct": 0.5,
+    "words": [
+      {
+        "text": "самая",
+        "size": "s"
+      },
+      {
+        "text": "провокационная",
+        "size": "s"
+      },
+      {
+        "text": "реклама",
+        "size": "xl",
+        "accent": true,
+        "br": true
+      },
+      {
+        "text": "2023 года",
+        "size": "s",
+        "br": true
+      }
+    ]
+  },
+  "inset": {
+    "src": "advertisiment.mp4",
+    "volume": 0.05,
+    "topPct": 0.49,
+    "widthPct": 0.84,
+    "pieces": [
+      {
+        "at": {
+          "ms": 3000
+        },
+        "from": 1
+      },
+      {
+        "at": "Тут происходит слом",
+        "from": 15.9
+      },
+      {
+        "at": "Может останешься",
+        "from": 21.6
+      },
+      {
+        "at": "Мужчина садится",
+        "from": 26.5
+      },
+      {
+        "at": "В этот момент",
+        "from": 30.4
+      },
+      {
+        "at": "И вот в чем была суть",
+        "from": 38.4
+      },
+      {
+        "at": "Это прямая параллель",
+        "from": 43
+      },
+      {
+        "at": "Экламо заканчивается",
+        "from": 50.8
+      }
+    ],
+    "end": "Эта реклама собрала"
+  },
+  "subtitles": {
+    "bottomPct": 0.28,
+    "underInsetBottomPct": 0.13,
+    "maxWidthPct": 0.69
+  },
+  "bottomGradient": {
+    "heightPct": 0.4,
+    "opacity": 0.85
+  },
+  "camera": {
+    "inMin": 1.06,
+    "inMax": 1.08,
+    "maxWithOverlay": 1.1,
+    "maxWithInset": 1.04
+  },
+  "titles": [
+    {
+      "text": "пиши «стратегия»",
+      "topPct": 0.56,
+      "start": "Пиши стратегия",
+      "end": {
+        "phrase": "зарабатывать на них",
+        "edge": "end",
+        "offsetMs": 300
+      }
+    }
+  ],
+  "versions": [
+    {
+      "name": "9x16"
+    }
+  ]
+}

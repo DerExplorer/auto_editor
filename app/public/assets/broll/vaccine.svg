@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
-<rect width="1080" height="1920" fill="#0f1115"/>
-<text x="540" y="400" text-anchor="middle" font-family="Arial, Segoe UI, sans-serif" font-size="56" font-weight="700" fill="#FFD60A" letter-spacing="6">ВАКЦИНАЦИЯ</text>
-<circle cx="540" cy="860" r="300" fill="none" stroke="#2a2e36" stroke-width="70"/>
-<circle cx="540" cy="860" r="300" fill="none" stroke="#34C759" stroke-width="70" stroke-linecap="round" stroke-dasharray="1508 1885" transform="rotate(-90 540 860)"/>
-<text x="540" y="920" text-anchor="middle" font-family="Arial, Segoe UI, sans-serif" font-size="180" font-weight="700" fill="#fff">80%</text>
-<text x="540" y="1340" text-anchor="middle" font-family="Arial, Segoe UI, sans-serif" font-size="60" font-weight="700" fill="#fff">детей в мире</text>
-<text x="540" y="1420" text-anchor="middle" font-family="Arial, Segoe UI, sans-serif" font-size="48" fill="#9aa0aa">привиты хотя бы от одной болезни</text>
-</svg>

@@ -23,16 +23,21 @@
       },
       {
         "text": "людей",
-        "size": "l"
+        "size": "m"
       },
       {
         "text": "ошибаются",
-        "size": "m",
+        "size": "l",
         "br": true
       },
       {
-        "text": "в 5 фактах",
-        "size": "s"
+        "text": "в этих",
+        "size": "s",
+        "br": true
+      },
+      {
+        "text": "5 фактах",
+        "size": "m"
       }
     ]
   },
@@ -199,16 +204,8 @@
     }
   ],
   "camera": {
-    "inMin": 1.07,
-    "inMax": 1.15,
-    "maxWithOverlay": 1.1,
-    "peaks": [
-      {
-        "at": "пессимистично",
-        "scale": 1.25,
-        "holdMs": 900,
-        "rampMs": 300
-      }
-    ]
+    "inMin": 1.06,
+    "inMax": 1.08,
+    "maxWithOverlay": 1.1
   }
 }

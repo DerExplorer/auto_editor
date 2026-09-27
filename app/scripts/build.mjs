@@ -6,18 +6,21 @@
 // Папки: MVPMON/rare — исходники, MVPMON/out — готовые ролики, MVPMON/app — всё техническое.
 // Использование (из app/): node scripts/build.mjs edits/<name>.json [--render] [--only=<version>]
 import { execFileSync, execSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loudness, makeIntensity, planCamera } from "./camera.mjs";
 import { buildBlocks, draftSubs } from "./subs.mjs";
+import { pythonCmd, requireTools } from "./tools.mjs";
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = path.resolve(APP, "..");
 const RARE = path.join(ROOT, "rare");
-const OUT = path.join(ROOT, "out");
+const OUT = process.env.AUTO_EDITOR_OUT ? path.resolve(process.env.AUTO_EDITOR_OUT) : path.join(ROOT, "out");
 const CWD = process.cwd();
 process.chdir(APP);
+requireTools();
 
 const FPS = 30;
 const argv = process.argv.slice(2);
@@ -43,10 +46,17 @@ const probe = (file) => {
 
 const transcribe = (file) => {
   const st = fs.statSync(file);
-  const cache = path.join("build/cache", `${path.basename(file)}-${st.size}-${Math.round(st.mtimeMs)}.json`);
+  // Ключ кэша — по содержимому (размер + хэш первых 4 МБ), а не по дате: переносится между машинами.
+  const fd = fs.openSync(file, "r");
+  const head = Buffer.alloc(Math.min(st.size, 4 << 20));
+  fs.readSync(fd, head, 0, head.length, 0);
+  fs.closeSync(fd);
+  const hash = crypto.createHash("sha1").update(head).digest("hex").slice(0, 10);
+  const cache = path.join("build", "cache", `${path.basename(file)}-${st.size}-${hash}.json`);
   if (!fs.existsSync(cache)) {
     console.log(`  транскрибация ${file}...`);
-    execFileSync("python", ["scripts/transcribe.py", file, cache], { stdio: "inherit" });
+    const py = pythonCmd();
+    execFileSync(py.cmd, [...py.pre, path.join("scripts", "transcribe.py"), file, cache], { stdio: "inherit" });
   }
   return JSON.parse(fs.readFileSync(cache, "utf-8"));
 };
@@ -92,8 +102,19 @@ const findPhrase = (clip, phrase, nth, afterMs) => {
 const resolveAnchor = (a, defClip = 0) => {
   if (typeof a === "number") return { clip: defClip, ms: a };
   if (typeof a === "string") a = { phrase: a };
-  const clip = a.clip ?? defClip;
+  let clip = a.clip ?? defClip;
   if (a.ms != null) return { clip, ms: a.ms + (a.offsetMs ?? 0) };
+  // Клип не указан явно и фразы в нём нет — ищем в остальных клипах по порядку.
+  if (a.clip == null && clips.length > 1) {
+    const found = [clip, ...clips.keys()].find((ci) => {
+      try {
+        return findPhrase(clips[ci], a.phrase, 1, -Infinity), true;
+      } catch {
+        return false;
+      }
+    });
+    if (found != null) clip = found;
+  }
   const after = a.after != null ? resolveAnchor(a.after, clip).ms : -Infinity;
   const m = findPhrase(clips[clip], a.phrase, a.nth ?? 1, after);
   return { clip, ms: (a.edge === "end" ? m.last.endMs : m.first.startMs) + (a.offsetMs ?? 0) };
@@ -343,7 +364,23 @@ const buildVersion = (edit, log) => {
       return { ...sp, title: c.title, question: c.question, options: c.options, answer: c.answer, answerOutMs: ans ? toOut(ans.clip, ans.ms, "forward") : undefined };
     })
     .filter(valid);
-  const titles = (edit.titles ?? []).map((x) => ({ ...span(x), text: x.text, position: x.position ?? "top" })).filter(valid);
+  const titles = (edit.titles ?? []).map((x) => ({ ...span(x), text: x.text, position: x.position ?? "top", topPct: x.topPct })).filter(valid);
+
+  // Видео в рамке: куски исходника встают на фразы рассказчика (at) и идут подряд до следующего куска / end.
+  let inset = null;
+  if (edit.inset) {
+    const ins = edit.inset;
+    const src = publish(findMedia(ins.src), "media");
+    const outAt = (a) => {
+      const r = resolveAnchor(a);
+      return toOut(r.clip, r.ms, "forward");
+    };
+    const starts = ins.pieces.map((pc) => outAt(pc.at));
+    const endMs = ins.end != null ? outAt(ins.end) : durationMs;
+    const pieces = ins.pieces.map((pc, i) => ({ src, outFromMs: starts[i], outToMs: starts[i + 1] ?? endMs, srcFromMs: pc.from * 1000 }));
+    inset = { outFromMs: starts[0], outToMs: endMs, topPct: ins.topPct ?? 0.55, widthPct: ins.widthPct ?? 0.78, volume: ins.volume ?? 0.05, pieces };
+    if (log) pieces.forEach((pc) => console.log(`  рамка: ${(pc.outFromMs / 1000).toFixed(1)}–${(pc.outToMs / 1000).toFixed(1)}s ← ${ins.src} с ${(pc.srcFromMs / 1000).toFixed(1)}s`));
+  }
 
   // Камера: авто-ключи по напряжённости речи + ручные пики; под карточками/плашками зум ограничен.
   const rmsAt = (outMs) => {
@@ -362,7 +399,7 @@ const buildVersion = (edit, log) => {
           const at = toOut(a.clip, a.ms, "forward");
           return { outFromMs: at, outToMs: at + (pk.holdMs ?? 1200), scale: pk.scale ?? 1.3, rampMs: pk.rampMs ?? 250 };
         }),
-        caps: [...cards, ...titles].map((x) => ({ outFromMs: x.outFromMs, outToMs: x.outToMs, max: cam.maxWithOverlay })),
+        caps: [...cards, ...titles, ...(inset ? [inset] : [])].map((x) => ({ outFromMs: x.outFromMs, outToMs: x.outToMs, max: x === inset ? (cam.maxWithInset ?? 1.04) : cam.maxWithOverlay })),
       }
     : { keys: [], peaks: [], caps: [] };
   return {
@@ -376,10 +413,17 @@ const buildVersion = (edit, log) => {
     titles,
     cards,
     camera,
+    inset,
     hook: edit.hook ? { durationMs: 3000, ...edit.hook } : null,
     bottomGradient: edit.bottomGradient === false ? null : { heightPct: 0.34, opacity: 0.78, ...edit.bottomGradient },
     progressBar: edit.progressBar ? { position: "top", ...edit.progressBar } : null,
-    subtitles: { bottomPct: 0.24, maxWidthPct: 0.69, blocks: subs.blocks },
+    subtitles: {
+      bottomPct: edit.subtitles?.bottomPct ?? 0.24,
+      maxWidthPct: edit.subtitles?.maxWidthPct ?? 0.69,
+      blocks: subs.blocks,
+      // Пока на экране рамка — субтитры под ней (subtitles.underInsetBottomPct).
+      zones: inset && edit.subtitles?.underInsetBottomPct != null ? [{ outFromMs: 0, outToMs: inset.outToMs, bottomPct: edit.subtitles.underInsetBottomPct }] : [],
+    },
   };
 };
 
@@ -401,7 +445,8 @@ versions.forEach((v, vi) => {
   );
   if (doRender) {
     const out = path.join(OUT, versions.length > 1 ? `${name}_${v.name}.mp4` : `${name}.mp4`);
-    execSync(`npx remotion render src/index.ts Edit "${out}" --props="${propsPath}" --log=error`, { stdio: "inherit" });
+    execSync(`npx --no-install remotion render src/index.ts Edit "${out}" --props="${propsPath}" --log=error`, { stdio: "inherit" });
+    if (!fs.existsSync(out)) throw new Error(`Рендер не создал файл: ${out}`);
     console.log(`  → ${out}`);
   }
 });

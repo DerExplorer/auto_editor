@@ -46,23 +46,33 @@ export const makeIntensity = (durationMs, rmsAt, words) => {
   };
 };
 
-// Ключи камеры: {atMs, scale, rampMs}. Точки ставим на начала смысловых блоков субтитров,
-// чтобы движение совпадало с фразами. Напряжённее → чаще, сильнее, быстрее.
+// Ключи камеры: {atMs, scale, rampMs}. База — всегда 100%. Время от времени плавный наезд
+// до ~107% (на начале смыслового блока), удержание хотя бы пару секунд, затем плавный возврат
+// к 100% — без резких «полётов». Напряжённее речь → циклы чаще и наезд чуть сильнее.
 export const planCamera = (durationMs, intensity, snapPoints, cfg = {}) => {
-  const { minIntervalMs = 5000, maxIntervalMs = 8000, inMin = 1.07, inMax = 1.15, outScale = 1.0 } = cfg;
-  const keys = [{ atMs: 0, scale: outScale, rampMs: 0 }];
-  let t = 0;
-  let zoomedIn = false;
+  const {
+    minIntervalMs = 5000, // между началами наездов
+    maxIntervalMs = 8000,
+    inMin = 1.06,
+    inMax = 1.08,
+    rampInMs = 2200, // наезд — медленно и плавно
+    rampOutMs = 1600,
+    minHoldMs = 2500, // удержание после наезда перед отдалением
+  } = cfg;
+  const keys = [{ atMs: 0, scale: 1, rampMs: 0 }];
+  let t = 1500;
   for (;;) {
     const I = intensity(t + 3000, 6000);
-    const target = t + lerp(maxIntervalMs, minIntervalMs, I);
-    if (target > durationMs - 2000) break;
-    const near = snapPoints.filter((p) => Math.abs(p - target) < 1500 && p > t + 3000).sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0];
+    const target = t + lerp(maxIntervalMs, minIntervalMs, I) * 0.5;
+    const near = snapPoints.filter((p) => Math.abs(p - target) < 1500 && p > t).sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0];
     const at = near ?? target;
-    const Ik = intensity(at, 1500);
-    zoomedIn = !zoomedIn;
-    keys.push({ atMs: at, scale: zoomedIn ? lerp(inMin, inMax, Ik) : outScale, rampMs: Math.round(lerp(1800, 400, Ik)) });
-    t = at;
+    const interval = lerp(maxIntervalMs, minIntervalMs, intensity(at, 3000));
+    const hold = Math.max(minHoldMs, interval - rampInMs - rampOutMs - 1500);
+    const outAt = at + rampInMs + hold;
+    if (outAt + rampOutMs > durationMs - 500) break;
+    keys.push({ atMs: at, scale: lerp(inMin, inMax, intensity(at, 1500)), rampMs: rampInMs });
+    keys.push({ atMs: outAt, scale: 1, rampMs: rampOutMs });
+    t = outAt + rampOutMs + 1500;
   }
   return keys;
 };
