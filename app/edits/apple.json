@@ -1,0 +1,117 @@
+{
+  "name": "apple",
+  "inputs": [
+    "Apple/IMG_8986.MP4"
+  ],
+  "cut": {
+    "removePauses": false,
+    "removeRetakes": false
+  },
+  "format": "9:16",
+  "fit": "crop",
+  "focus": {
+    "x": 0.5,
+    "y": 0.33
+  },
+  "hook": {
+    "durationMs": 3000,
+    "topPct": 0.56,
+    "words": [
+      {
+        "text": "как Apple",
+        "size": "s"
+      },
+      {
+        "text": "уделала",
+        "size": "m"
+      },
+      {
+        "text": "Android",
+        "size": "xl",
+        "accent": true,
+        "br": true
+      },
+      {
+        "text": "без единого слова",
+        "size": "s",
+        "br": true
+      }
+    ]
+  },
+  "inset": {
+    "src": "Apple/boinguwcnc.mp4",
+    "volume": 0.05,
+    "topPct": 0.565,
+    "widthPct": 0.76,
+    "borderColor": "#F5A742",
+    "pieces": [
+      {
+        "at": {
+          "ms": 3000
+        },
+        "from": 27
+      },
+      {
+        "at": "Скорость",
+        "from": 8.9
+      },
+      {
+        "at": "отсутствие багов",
+        "from": 24
+      },
+      {
+        "at": "приватность",
+        "from": 51
+      },
+      {
+        "at": "удобный перенос",
+        "from": 66.9
+      },
+      {
+        "at": "фото и музыки",
+        "from": 97
+      },
+      {
+        "at": "музыки",
+        "from": 81
+      },
+      {
+        "at": "Давние самые",
+        "from": 103.4
+      }
+    ],
+    "end": "Эта реклама собрала"
+  },
+  "titles": [
+    {
+      "text": "пиши «стратегия»",
+      "topPct": 0.58,
+      "start": "Пиши",
+      "end": {
+        "phrase": "зарабатывать с них",
+        "edge": "end",
+        "offsetMs": 300
+      }
+    }
+  ],
+  "subtitles": {
+    "bottomPct": 0.28,
+    "underInsetBottomPct": 0.105,
+    "maxWidthPct": 0.69
+  },
+  "bottomGradient": {
+    "heightPct": 0.4,
+    "opacity": 0.85
+  },
+  "camera": {
+    "inMin": 1.06,
+    "inMax": 1.08,
+    "maxWithOverlay": 1.1,
+    "maxWithInset": 1.04
+  },
+  "versions": [
+    {
+      "name": "9x16"
+    }
+  ]
+}

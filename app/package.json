@@ -8,6 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "setup": "node scripts/setup.mjs",
     "doctor": "node scripts/doctor.mjs",
     "build": "node scripts/build.mjs",
     "render": "node scripts/build.mjs --render",

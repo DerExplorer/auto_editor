@@ -30,6 +30,7 @@ winget install OpenJS.NodeJS.LTS Gyan.FFmpeg Python.Python.3.12
 cd app
 npm ci
 python -m pip install -r requirements.txt
+npm run setup
 npm run doctor
 ```
 
@@ -41,21 +42,24 @@ cd app
 npm ci
 python3 -m venv .venv && source .venv/bin/activate   # Homebrew-Python не даёт ставить пакеты глобально
 pip install -r requirements.txt
+npm run setup
 npm run doctor
 ```
 
 На macOS перед работой активируйте окружение: `source app/.venv/bin/activate`. Сборщик сам найдёт Python из активного окружения. Можно указать Python и явно: `PYTHON=/path/to/python npm run render -- edits/x.json`.
 
+`npm run setup` создаёт на рабочем столе папки `Apps/auto_editor/input` (сюда кладутся исходники) и `output` (сюда падают готовые ролики) и записывает пути к ним в `app/local.json`. Файл локальный, в git не попадает. Без него приложение работает с `rare/` и `out/` рядом с `app/`.
+
 `npm run doctor` проверяет всё окружение и подсказывает, что доустановить. Проверка всего пайплайна на тестовых клипах: `npm test`, займёт около 20 секунд. При первом запуске скачаются модель Whisper (около 500 МБ) и headless Chrome для Remotion. Это нормально.
 
 ## Как сделать ролик
 
-1. Положить видео в `rare/`.
-2. Создать `app/edits/<имя>.json`. Образцы: `sample.json` (простой), `testreels1.json` (квиз с карточками и инфографикой), `reel2.json` (горизонтальное видео в рамке, нарезанное под пересказ).
+1. Положить видео в `input` на рабочем столе (или в `rare/`, если `npm run setup` не запускали).
+2. Создать `app/edits/<имя>.json`. Образцы: `sample.json` (простой), `testreels1.json` (квиз с карточками и инфографикой), `reel2.json`, `apple.json`, `doritos2.json` (реклама в рамке под пересказ).
 3. Запустить из `app/`:
    ```bash
    npm run build -- edits/<имя>.json     # только собрать и проверить (быстро)
-   npm run render -- edits/<имя>.json    # собрать и отрендерить в out/<имя>.mp4
+   npm run render -- edits/<имя>.json    # собрать и отрендерить в output/<имя>.mp4
    ```
 4. При первой сборке создаётся черновик субтитров `edits/<имя>.subs.txt`. Правьте его как обычный текст:
    - одна строка — один блок на экране, до 2 строк;
@@ -66,5 +70,7 @@ npm run doctor
    Тайминг подтянется из речи сам. Если блок не влезает в 2 строки, сборка предупредит.
 
 Все времена в edit-файле задаются привязкой к фразе из речи, а не секундами: `"start": "Вопрос второй"` или `{"phrase": "ответ В", "after": "Вопрос третий", "edge": "end", "offsetMs": 300}`. Поэтому элементы не съезжают при правках.
+
+Правила стиля и порядок работы для Claude — в [CLAUDE.md](CLAUDE.md).
 
 Предпросмотр в браузере после сборки: `npx remotion studio src/index.ts --props=build/<имя>/9x16.props.json`.

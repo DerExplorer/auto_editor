@@ -1,0 +1,126 @@
+{
+  "name": "doritos2",
+  "inputs": [
+    "Doritos/0928 (1).mp4"
+  ],
+  "cut": {
+    "removePauses": false,
+    "removeRetakes": false
+  },
+  "format": "9:16",
+  "fit": "crop",
+  "focus": {
+    "x": 0.5,
+    "y": 0.3
+  },
+  "hook": {
+    "durationMs": 3000,
+    "topPct": 0.52,
+    "words": [
+      {
+        "text": "одна из",
+        "size": "s"
+      },
+      {
+        "text": "крутейших",
+        "size": "m"
+      },
+      {
+        "text": "реклам",
+        "size": "xl",
+        "accent": true,
+        "br": true
+      },
+      {
+        "text": "последних лет",
+        "size": "s",
+        "br": true
+      }
+    ]
+  },
+  "titles": [
+    {
+      "text": "66 млн просмотров на YouTube",
+      "topPct": 0.58,
+      "start": "Только на ютубе",
+      "end": {
+        "phrase": "а ее создатели",
+        "offsetMs": -100
+      }
+    },
+    {
+      "text": "$1 000 000 создателям",
+      "topPct": 0.58,
+      "start": "а ее создатели",
+      "end": {
+        "phrase": "Соседский парнишка",
+        "offsetMs": -150
+      }
+    },
+    {
+      "text": "стоила ли она $1 000 000?",
+      "topPct": 0.56,
+      "start": "Как считаете",
+      "end": {
+        "phrase": "Она собрала",
+        "offsetMs": -150
+      }
+    },
+    {
+      "text": "пиши «стратегия»",
+      "topPct": 0.56,
+      "start": "Пиши",
+      "end": {
+        "phrase": "зарабатывать на них",
+        "edge": "end",
+        "offsetMs": 300
+      }
+    }
+  ],
+  "inset": {
+    "src": "Doritos/0928.mp4",
+    "volume": 0.05,
+    "topPct": 0.52,
+    "widthPct": 0.56,
+    "borderColor": "#F5A742",
+    "pieces": [
+      {
+        "at": "Соседский парнишка",
+        "from": 0
+      },
+      {
+        "at": "это лучший момент",
+        "from": 16.73
+      },
+      {
+        "at": "Джимми ты так",
+        "from": 23.47
+      }
+    ],
+    "end": {
+      "phrase": "для смелых",
+      "edge": "end",
+      "offsetMs": -250
+    }
+  },
+  "subtitles": {
+    "bottomPct": 0.28,
+    "underInsetBottomPct": 0.12,
+    "maxWidthPct": 0.69
+  },
+  "bottomGradient": {
+    "heightPct": 0.4,
+    "opacity": 0.85
+  },
+  "camera": {
+    "inMin": 1.06,
+    "inMax": 1.08,
+    "maxWithOverlay": 1.1,
+    "maxWithInset": 1.04
+  },
+  "versions": [
+    {
+      "name": "9x16"
+    }
+  ]
+}

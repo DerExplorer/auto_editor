@@ -30,3 +30,6 @@ desktop.ini
 .DS_Store
 .vscode/
 *.log
+
+# Local paths for this machine (input/output folders)
+app/local.json

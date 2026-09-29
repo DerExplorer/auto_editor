@@ -16,8 +16,16 @@ import { pythonCmd, requireTools } from "./tools.mjs";
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = path.resolve(APP, "..");
-const RARE = path.join(ROOT, "rare");
-const OUT = process.env.AUTO_EDITOR_OUT ? path.resolve(process.env.AUTO_EDITOR_OUT) : path.join(ROOT, "out");
+// Папки исходников и готовых роликов: по умолчанию rare/ и out/ рядом с app/.
+// Переопределяются локальным app/local.json ({"inputDir": "...", "outputDir": "..."}, в git не попадает)
+// или переменными AUTO_EDITOR_IN / AUTO_EDITOR_OUT.
+const localCfg = (() => {
+  const p = path.join(APP, "local.json");
+  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : {};
+})();
+const dirFrom = (env, cfg, def) => (process.env[env] ? path.resolve(process.env[env]) : cfg ? path.resolve(APP, cfg) : def);
+const RARE = dirFrom("AUTO_EDITOR_IN", localCfg.inputDir, path.join(ROOT, "rare"));
+const OUT = dirFrom("AUTO_EDITOR_OUT", localCfg.outputDir, path.join(ROOT, "out"));
 const CWD = process.cwd();
 process.chdir(APP);
 requireTools();
@@ -378,7 +386,17 @@ const buildVersion = (edit, log) => {
     const starts = ins.pieces.map((pc) => outAt(pc.at));
     const endMs = ins.end != null ? outAt(ins.end) : durationMs;
     const pieces = ins.pieces.map((pc, i) => ({ src, outFromMs: starts[i], outToMs: starts[i + 1] ?? endMs, srcFromMs: pc.from * 1000 }));
-    inset = { outFromMs: starts[0], outToMs: endMs, topPct: ins.topPct ?? 0.55, widthPct: ins.widthPct ?? 0.78, volume: ins.volume ?? 0.05, pieces };
+    const insProbe = probe(findMedia(ins.src));
+    inset = {
+      outFromMs: starts[0],
+      outToMs: endMs,
+      topPct: ins.topPct ?? 0.55,
+      widthPct: ins.widthPct ?? 0.78,
+      volume: ins.volume ?? 0.05,
+      aspect: insProbe.width / insProbe.height,
+      borderColor: ins.borderColor ?? "#111317",
+      pieces,
+    };
     if (log) pieces.forEach((pc) => console.log(`  рамка: ${(pc.outFromMs / 1000).toFixed(1)}–${(pc.outToMs / 1000).toFixed(1)}s ← ${ins.src} с ${(pc.srcFromMs / 1000).toFixed(1)}s`));
   }
 

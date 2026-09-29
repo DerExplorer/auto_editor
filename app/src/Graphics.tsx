@@ -383,8 +383,8 @@ export const InsetVideo: React.FC<{ inset: Inset }> = ({ inset }) => {
   const { enter, exit } = useInOut(inset.outToMs - inset.outFromMs, 8);
   const f = (ms: number) => Math.round((ms / 1000) * fps);
   const w = width * inset.widthPct;
-  const border = base * 0.022;
-  const h = ((w - 2 * border) * 9) / 16 + 2 * border;
+  const border = base * 0.018;
+  const h = (w - 2 * border) / inset.aspect + 2 * border;
   return (
     <div
       style={{
@@ -394,8 +394,8 @@ export const InsetVideo: React.FC<{ inset: Inset }> = ({ inset }) => {
         width: w,
         height: h,
         boxSizing: "border-box",
-        border: `${border}px solid ${C.ink}`,
-        borderRadius: base * 0.06,
+        border: `${border}px solid ${inset.borderColor}`,
+        borderRadius: base * 0.05,
         overflow: "hidden",
         background: C.ink,
         boxShadow: SOFT_SHADOW,

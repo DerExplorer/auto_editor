@@ -40,6 +40,8 @@ export type Inset = Span & {
   topPct: number;
   widthPct: number;
   volume: number;
+  aspect: number; // ширина / высота исходника
+  borderColor: string;
   pieces: { src: string; outFromMs: number; outToMs: number; srcFromMs: number }[];
 };
 

@@ -1,0 +1,174 @@
+{
+  "name": "doritos",
+  "inputs": [
+    "IMG_8985.MP4"
+  ],
+  "cut": {
+    "removePauses": false,
+    "removeRetakes": false
+  },
+  "format": "9:16",
+  "fit": "crop",
+  "focus": {
+    "x": 0.5,
+    "y": 0.3
+  },
+  "hook": {
+    "durationMs": 3000,
+    "topPct": 0.52,
+    "words": [
+      {
+        "text": "одна из",
+        "size": "s"
+      },
+      {
+        "text": "крутейших",
+        "size": "m"
+      },
+      {
+        "text": "реклам",
+        "size": "xl",
+        "accent": true,
+        "br": true
+      },
+      {
+        "text": "последних лет",
+        "size": "s",
+        "br": true
+      }
+    ]
+  },
+  "titles": [
+    {
+      "text": "66 млн просмотров на YouTube",
+      "topPct": 0.58,
+      "start": "Только на ютубе",
+      "end": {
+        "phrase": "а ее создатели",
+        "offsetMs": -100
+      }
+    },
+    {
+      "text": "$1 000 000 создателям",
+      "topPct": 0.58,
+      "start": "а ее создатели",
+      "end": {
+        "phrase": "Соседский парнишка",
+        "offsetMs": -150
+      }
+    },
+    {
+      "text": "стоила ли она $1 000 000?",
+      "topPct": 0.56,
+      "start": "Как считаете",
+      "end": {
+        "phrase": "Она собрала",
+        "offsetMs": -150
+      }
+    },
+    {
+      "text": "пиши «стратегия»",
+      "topPct": 0.56,
+      "start": "Пиши",
+      "end": {
+        "phrase": "зарабатывать на них",
+        "edge": "end",
+        "offsetMs": 300
+      }
+    }
+  ],
+  "inset": {
+    "src": "0928.mp4",
+    "volume": 0.05,
+    "topPct": 0.515,
+    "widthPct": 0.56,
+    "borderColor": "#F5A742",
+    "pieces": [
+      {
+        "at": "Соседский парнишка",
+        "from": 0.6
+      },
+      {
+        "at": "Мимо идет",
+        "from": 5
+      },
+      {
+        "at": "Парень окликает",
+        "from": 0
+      },
+      {
+        "at": "Но есть нюанс",
+        "from": 2.6
+      },
+      {
+        "at": "Сосед с улыбкой",
+        "from": 5.2
+      },
+      {
+        "at": "Мужчина так",
+        "from": 10.6
+      },
+      {
+        "at": "Парень ловит",
+        "from": 11.4
+      },
+      {
+        "at": "Машина времени трясется",
+        "from": 20
+      },
+      {
+        "at": "Она реально",
+        "from": 13
+      },
+      {
+        "at": "В это время",
+        "from": 14
+      },
+      {
+        "at": "имитирует",
+        "from": 14.6
+      },
+      {
+        "at": "Это лучший момент",
+        "from": 16.5
+      },
+      {
+        "at": "Вдруг из дома",
+        "from": 18.9
+      },
+      {
+        "at": "Мужчина удивленно",
+        "from": 21.8
+      },
+      {
+        "at": "Джимми ты так",
+        "from": 25
+      },
+      {
+        "at": "Здесь появляется",
+        "from": 26.9
+      }
+    ],
+    "end": "Как считаете"
+  },
+  "subtitles": {
+    "bottomPct": 0.28,
+    "underInsetBottomPct": 0.12,
+    "maxWidthPct": 0.69
+  },
+  "bottomGradient": {
+    "heightPct": 0.4,
+    "opacity": 0.85
+  },
+  "camera": {
+    "inMin": 1.06,
+    "inMax": 1.08,
+    "maxWithOverlay": 1.1,
+    "maxWithInset": 1.04
+  },
+  "versions": [
+    {
+      "name": "9x16"
+    }
+  ]
+}
