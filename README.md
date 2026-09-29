@@ -4,6 +4,8 @@
 
 Работает на **Windows 10/11** и **macOS 13+** (Apple Silicon и Intel).
 
+Переезд на Mac с помощью Claude: вставьте в чат Claude на Mac текст из [docs/MAC_SETUP_PROMPT.md](docs/MAC_SETUP_PROMPT.md) — он сам всё установит, проверит и будет монтировать по правилам проекта.
+
 ## Папки
 
 ```
