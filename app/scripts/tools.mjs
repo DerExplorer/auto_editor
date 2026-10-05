@@ -1,4 +1,4 @@
-// Внешние инструменты, одинаково на Windows и macOS: Python (python3 / python / py -3) и ffmpeg/ffprobe.
+// Python и ffmpeg на Windows и macOS.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
@@ -9,8 +9,7 @@ const works = (cmd, args) => {
   return r.status === 0 ? (r.stdout || r.stderr || "").trim() : null;
 };
 
-// Python 3: можно задать явно через PYTHON=/path/to/python. На Windows «python» бывает
-// заглушкой Microsoft Store, поэтому проверяем, что это действительно Python 3.
+// Python 3: PYTHON, активный venv, python3, python, py -3. На Windows «python» бывает заглушкой Store.
 let python;
 export const pythonCmd = () => {
   if (python !== undefined) return python;
@@ -34,7 +33,7 @@ export const pythonCmd = () => {
 
 export const toolVersion = (bin) => works(bin, ["-version"])?.split(/\r?\n/)[0] ?? null;
 
-// Понятная ошибка вместо «spawn ENOENT», с подсказкой по установке под текущую ОС.
+// Понятная ошибка с подсказкой установки вместо «spawn ENOENT».
 export const requireTools = () => {
   const missing = [];
   for (const bin of ["ffmpeg", "ffprobe"]) if (!toolVersion(bin)) missing.push(bin);

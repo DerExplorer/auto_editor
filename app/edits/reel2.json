@@ -1,14 +1,12 @@
 {
   "name": "reel2",
   "inputs": [
-    "Reel2.MP4"
+    "Старые исходники/Reel2.MP4"
   ],
   "cut": {
     "removePauses": false,
     "removeRetakes": false
   },
-  "format": "9:16",
-  "fit": "crop",
   "focus": {
     "x": 0.5,
     "y": 0.3
@@ -39,7 +37,7 @@
     ]
   },
   "inset": {
-    "src": "advertisiment.mp4",
+    "src": "Старые исходники/advertisiment.mp4",
     "volume": 0.05,
     "topPct": 0.49,
     "widthPct": 0.84,
@@ -106,11 +104,6 @@
         "edge": "end",
         "offsetMs": 300
       }
-    }
-  ],
-  "versions": [
-    {
-      "name": "9x16"
     }
   ]
 }

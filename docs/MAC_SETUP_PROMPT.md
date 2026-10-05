@@ -39,7 +39,7 @@
 
 5. **Проект:**
    ```bash
-   mkdir -p ~/dev && cd ~/dev && git clone https://github.com/DerExplorer/auto_editor.git && cd auto_editor/app
+   mkdir -p ~/Desktop/Apps && cd ~/Desktop/Apps && git clone https://github.com/DerExplorer/auto_editor.git && cd auto_editor/app
    ```
 
 6. **Зависимости:**
@@ -49,11 +49,11 @@
    ```
    - Homebrew-Python запрещает ставить пакеты глобально, поэтому только venv.
    - Сборщик сам находит Python из активного venv (переменная `VIRTUAL_ENV`).
-   - Перед каждой работой активируй venv: `source ~/dev/auto_editor/app/.venv/bin/activate`. Если удобнее — пропиши `export PYTHON=~/dev/auto_editor/app/.venv/bin/python` в `~/.zprofile`, тогда venv активировать не нужно.
+   - Перед каждой работой активируй venv: `source ~/Desktop/Apps/auto_editor/app/.venv/bin/activate`. Если удобнее — пропиши `export PYTHON=~/Desktop/Apps/auto_editor/app/.venv/bin/python` в `~/.zprofile`, тогда venv активировать не нужно.
 
-7. **Рабочие папки:** `npm run setup` создаст `~/Desktop/Apps/auto_editor/input` и `output` и запишет пути в `app/local.json`.
+7. **Рабочие папки:** `npm run setup` создаст в корне проекта `input`, `output`, `sfx`, `music`, `reference` (всё в `~/Desktop/Apps/auto_editor`).
    - Если macOS спросит доступ к «Рабочему столу» — попроси меня разрешить.
-   - `local.json` в git не коммить.
+   - эти папки личные, в git не коммить.
 
 8. **Проверка окружения:** `npm run doctor` — все пункты должны быть ✓. Если что-то ✗ — почини по подсказке.
 
@@ -68,8 +68,8 @@
     - venv не активирован;
     - `npm ci` ругается на lockfile — **не** делай `npm install` с обновлением версий. Версии Remotion зафиксированы специально: 4.0.528 для remotion, @remotion/cli, @remotion/fonts.
 
-11. **Память:** прочитай `~/dev/auto_editor/CLAUDE.md` целиком — там все мои правила. Сохрани в свою память, что:
-    - проект лежит в `~/dev/auto_editor`;
+11. **Память:** прочитай `~/Desktop/Apps/auto_editor/CLAUDE.md` целиком — там все мои правила. Сохрани в свою память, что:
+    - проект лежит в `~/Desktop/Apps/auto_editor`;
     - я кладу видео в `~/Desktop/Apps/auto_editor/input`;
     - результат ты кладёшь в `output`;
     - правила стиля — в `CLAUDE.md`.

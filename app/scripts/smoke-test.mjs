@@ -1,10 +1,9 @@
-// Смоук-тест всего пайплайна на синтетических клипах из app/samples:
-// транскрибация → нарезка → субтитры → камера → графика → рендер mp4 → проверка ffprobe.
-// Запуск: npm test (результат пишется в app/build/smoke, папка out/ не трогается).
+// Смоук-тест: полная сборка и рендер на клипах из app/samples, проверка результата. Запуск: npm test
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { integratedLufs } from "./audio.mjs";
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(APP, "build", "smoke");
@@ -24,6 +23,7 @@ const audio = probe.streams.find((s) => s.codec_type === "audio");
 const duration = parseFloat(probe.format.duration);
 const props = JSON.parse(fs.readFileSync(path.join(APP, "build", "sample", "9x16.props.json"), "utf-8"));
 
+let lufs;
 const checks = [
   ["mp4 создан", fs.existsSync(out)],
   ["есть видео 9:16", video && Math.abs(video.width / video.height - 9 / 16) < 0.01],
@@ -31,6 +31,10 @@ const checks = [
   ["длительность 5–15 с", duration > 5 && duration < 15],
   ["речь распознана (есть субтитры)", props.subtitles.blocks.length > 3],
   ["хук, плашка и инфографика на месте", !!props.hook && props.titles.length === 1 && props.broll.length === 1],
+  ["голос: только срез низов (по умолчанию)", props.segments.every((s) => s.voiceSrc && fs.existsSync(path.join(APP, "public", s.voiceSrc)))],
+  ["звуковые эффекты расставлены", props.sfx.length >= 3],
+  ["фоновая музыка с приглушением под голос", !!props.music && props.music.speech.length > 0],
+  [`громкость ≈ −14 LUFS (${(lufs = integratedLufs(out)).toFixed(1)})`, Math.abs(lufs + 14) <= 1],
 ];
 let ok = true;
 for (const [name, pass] of checks) {

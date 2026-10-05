@@ -1,60 +1,56 @@
-// Сборка монтажа по edit-файлу:
-//   транскрибация (с кэшем) → авто-нарезка (паузы, дубли/оговорки) + ручные вырезы и секции →
-//   раскладка на выходной таймлайн → props для каждой версии → (опц.) рендер.
-// Все таймкоды в edit-файле — в исходном времени клипа (мс или привязка к фразе),
-// скрипт сам пересчитывает их в выходное время после вырезов.
-// Папки: MVPMON/rare — исходники, MVPMON/out — готовые ролики, MVPMON/app — всё техническое.
-// Использование (из app/): node scripts/build.mjs edits/<name>.json [--render] [--only=<version>]
+// Сборка ролика по edit-файлу: транскрибация → нарезка → таймлайн → props для Remotion → рендер.
+// Времена в edit-файле задаются в исходном времени клипа (мс или фраза речи) и пересчитываются после вырезов.
+// Запуск из app/: node scripts/build.mjs edits/<имя>.json [--render]
 import { execFileSync, execSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listAudio, normalizeFinal, processVoice, scanLibrary, speechIntervals } from "./audio.mjs";
 import { loudness, makeIntensity, planCamera } from "./camera.mjs";
+import { isVideo, makeProxy } from "./media.mjs";
+import { resolveMood } from "./mood.mjs";
 import { buildBlocks, draftSubs } from "./subs.mjs";
 import { pythonCmd, requireTools } from "./tools.mjs";
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = path.resolve(APP, "..");
-// Папки исходников и готовых роликов: по умолчанию rare/ и out/ рядом с app/.
-// Переопределяются локальным app/local.json ({"inputDir": "...", "outputDir": "..."}, в git не попадает)
-// или переменными AUTO_EDITOR_IN / AUTO_EDITOR_OUT.
+
+// Рабочие папки лежат в корне проекта; другое место — через app/local.json или переменные окружения.
 const localCfg = (() => {
   const p = path.join(APP, "local.json");
   return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : {};
 })();
 const dirFrom = (env, cfg, def) => (process.env[env] ? path.resolve(process.env[env]) : cfg ? path.resolve(APP, cfg) : def);
-const RARE = dirFrom("AUTO_EDITOR_IN", localCfg.inputDir, path.join(ROOT, "rare"));
-const OUT = dirFrom("AUTO_EDITOR_OUT", localCfg.outputDir, path.join(ROOT, "out"));
+const INPUT = dirFrom("AUTO_EDITOR_IN", localCfg.inputDir, path.join(ROOT, "input"));
+const OUT = dirFrom("AUTO_EDITOR_OUT", localCfg.outputDir, path.join(ROOT, "output"));
+const SFX_DIR = dirFrom("AUTO_EDITOR_SFX", localCfg.sfxDir, path.join(ROOT, "sfx"));
+const MUSIC_DIR = dirFrom("AUTO_EDITOR_MUSIC", localCfg.musicDir, path.join(ROOT, "music"));
+
 const CWD = process.cwd();
 process.chdir(APP);
 requireTools();
 
-const FPS = 30;
 const argv = process.argv.slice(2);
 const editPath = argv.find((a) => !a.startsWith("--"));
 if (!editPath) {
-  console.error("Usage: node scripts/build.mjs <edit.json> [--render] [--only=<version>]");
+  console.error("Usage: node scripts/build.mjs <edit.json> [--render]");
   process.exit(1);
 }
 const doRender = argv.includes("--render");
-const only = argv.find((a) => a.startsWith("--only="))?.slice(7);
+const edit = JSON.parse(fs.readFileSync([path.resolve(CWD, editPath), path.resolve(APP, editPath)].find((x) => fs.existsSync(x)) ?? editPath, "utf-8"));
+const name = edit.name ?? path.basename(editPath, ".json");
 
-const baseEdit = JSON.parse(fs.readFileSync([path.resolve(CWD, editPath), path.resolve(APP, editPath)].find((x) => fs.existsSync(x)) ?? editPath, "utf-8"));
-const name = baseEdit.name ?? path.basename(editPath, ".json");
-
-// ---------- анализ исходников ----------
+// ---------- исходники ----------
 
 const probe = (file) => {
-  const j = JSON.parse(
-    execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", file]),
-  );
+  const j = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", file]));
   return { width: j.streams[0].width, height: j.streams[0].height, durationMs: Math.round(parseFloat(j.format.duration) * 1000) };
 };
 
+// Кэш распознавания — по содержимому файла, чтобы переносился между компьютерами.
 const transcribe = (file) => {
   const st = fs.statSync(file);
-  // Ключ кэша — по содержимому (размер + хэш первых 4 МБ), а не по дате: переносится между машинами.
   const fd = fs.openSync(file, "r");
   const head = Buffer.alloc(Math.min(st.size, 4 << 20));
   fs.readSync(fd, head, 0, head.length, 0);
@@ -69,25 +65,36 @@ const transcribe = (file) => {
   return JSON.parse(fs.readFileSync(cache, "utf-8"));
 };
 
-fs.mkdirSync("build/cache", { recursive: true });
-fs.mkdirSync("public/clips", { recursive: true });
+fs.mkdirSync(path.join("build", "cache"), { recursive: true });
 
-// Медиа кладём в public/ (Remotion берёт файлы только оттуда). Путь ищем в rare/, затем от корня MVPMON.
-const findMedia = (p) => [path.join(RARE, p), path.join(ROOT, p), path.resolve(p)].find((x) => fs.existsSync(x)) ?? (() => { throw new Error(`Нет файла: ${p} (искал в rare/ и ${ROOT})`); })();
+const findMedia = (p) => {
+  const hit = [path.join(INPUT, p), path.join(ROOT, p), path.resolve(p)].find((x) => fs.existsSync(x));
+  if (!hit) throw new Error(`Нет файла: ${p} (искал в ${INPUT} и ${ROOT})`);
+  return hit;
+};
+// Remotion берёт файлы только из public/. Видео кладём туда сжатой копией (30 к/с, ≤1080p), остальное — как есть.
 const publish = (file, dir) => {
-  const src = `${dir}/${path.basename(file).toLowerCase()}`;
+  const base = path.basename(file).toLowerCase();
+  const src = `${dir}/${isVideo(file) ? base.replace(/\.[^.]+$/, ".mp4") : base}`;
   const dst = path.join("public", src);
   fs.mkdirSync(path.dirname(dst), { recursive: true });
-  if (!fs.existsSync(dst) || fs.statSync(dst).size !== fs.statSync(file).size) fs.copyFileSync(file, dst);
+  if (isVideo(file)) makeProxy(file, dst);
+  else if (!fs.existsSync(dst) || fs.statSync(dst).size !== fs.statSync(file).size) fs.copyFileSync(file, dst);
   return src;
 };
 
-const clips = baseEdit.inputs.map((input) => {
+const clips = edit.inputs.map((input) => {
   const file = findMedia(input);
-  return { file, src: publish(file, "clips"), ...probe(file), words: transcribe(file), rms: loudness(file) };
+  const src = publish(file, "clips");
+  let voiceSrc = null;
+  if (edit.audio?.voice !== false) {
+    voiceSrc = `${src}.voice.wav`;
+    processVoice(file, path.join("public", voiceSrc), typeof edit.audio?.voice === "object" ? edit.audio.voice : {});
+  }
+  return { file, src, voiceSrc, ...probe(path.join("public", src)), words: transcribe(file), rms: loudness(file) };
 });
 
-// ---------- поиск фраз и привязки ----------
+// ---------- привязки к фразам ----------
 
 const norm = (t) => t.toLowerCase().replace(/ё/g, "е").replace(/[^\p{L}\p{N}]+/gu, "");
 const mid = (w) => (w.startMs + w.endMs) / 2;
@@ -99,20 +106,18 @@ const findPhrase = (clip, phrase, nth, afterMs) => {
   for (let k = 0; k + target.length <= toks.length; k++) {
     if (clip.words[toks[k].i].startMs < afterMs) continue;
     if (target.every((t, j) => toks[k + j].t === t) && ++count === nth) {
-      const idx = toks.slice(k, k + target.length).map((x) => x.i);
-      return { first: clip.words[idx[0]], last: clip.words[idx[idx.length - 1]], idx };
+      return { first: clip.words[toks[k].i], last: clip.words[toks[k + target.length - 1].i] };
     }
   }
   throw new Error(`Фраза не найдена в ${clip.file}: "${phrase}" (nth=${nth})`);
 };
 
-// Привязка: число (мс) | "фраза" | {phrase, nth, after, edge: "start"|"end", offsetMs, clip} | {ms, clip}
+// Привязка: мс | "фраза" | {phrase, nth, after, edge: "start"|"end", offsetMs, clip} | {ms, clip}
 const resolveAnchor = (a, defClip = 0) => {
   if (typeof a === "number") return { clip: defClip, ms: a };
   if (typeof a === "string") a = { phrase: a };
   let clip = a.clip ?? defClip;
   if (a.ms != null) return { clip, ms: a.ms + (a.offsetMs ?? 0) };
-  // Клип не указан явно и фразы в нём нет — ищем в остальных клипах по порядку.
   if (a.clip == null && clips.length > 1) {
     const found = [clip, ...clips.keys()].find((ci) => {
       try {
@@ -128,17 +133,7 @@ const resolveAnchor = (a, defClip = 0) => {
   return { clip, ms: (a.edge === "end" ? m.last.endMs : m.first.startMs) + (a.offsetMs ?? 0) };
 };
 
-// Точечные исправления распознавания: {phrase, nth, after, clip, text} — слова фразы
-// заменяются словами text один к одному (Whisper, например, путает «Б» и «в»).
-for (const fx of baseEdit.subtitles?.fixes ?? []) {
-  const clip = clips[fx.clip ?? 0];
-  const after = fx.after != null ? resolveAnchor(fx.after, fx.clip ?? 0).ms : -Infinity;
-  const { idx } = findPhrase(clip, fx.phrase, fx.nth ?? 1, after);
-  const repl = fx.text.split(/\s+/);
-  idx.forEach((wi, j) => repl[j] != null && (clip.words[wi] = { ...clip.words[wi], text: repl[j] }));
-}
-
-// ---------- авто-поиск дублей (оговорка → перезапись той же фразы) ----------
+// ---------- поиск дублей ----------
 
 const lcs = (a, b) => {
   const dp = Array(b.length + 1).fill(0);
@@ -167,8 +162,7 @@ const sentences = (words) => {
   return out;
 };
 
-// Кусок речи [p, q) считается неудачным дублем, если начало следующей за ним фразы q
-// почти дословно его повторяет (LCS ≥ threshold). Удаляем ранний дубль, оставляем последний.
+// Фраза — неудачный дубль, если следующая почти дословно её повторяет и начинается так же. Оставляем последнюю.
 const detectRetakes = (words, { window = 4, threshold = 0.75, maxSpanMs = 15000, minWords = 3 } = {}) => {
   const sents = sentences(words);
   const toks = (from, to) => words.slice(from, to).map((w) => norm(w.text)).filter(Boolean);
@@ -183,7 +177,6 @@ const detectRetakes = (words, { window = 4, threshold = 0.75, maxSpanMs = 15000,
       const A = toks(a0, b0);
       if (A.length < minWords) continue;
       const B = toks(b0, words.length).slice(0, A.length + 1);
-      // Дубль должен начинаться так же, как перезапись, иначе захватим чужую фразу перед ним.
       if (B.slice(0, 2).includes(A[0]) && lcs(A, B) / A.length >= threshold) {
         hit = q;
         break;
@@ -209,28 +202,19 @@ const subtract = ([S, E], cuts) => {
   return out;
 };
 
-// ---------- сборка одной версии ----------
-
-const frameSize = (src, format, fit) => {
+// Кадр 9:16 по исходнику (если исходник шире — обрезка по бокам).
+const frameSize = ({ width, height }) => {
   const even = (n) => Math.round(n / 2) * 2;
-  if (!format || format === "source") return { width: src.width, height: src.height };
-  const [rw, rh] = format.split(":").map(Number);
-  let w, h;
-  if (fit === "blur") {
-    const long = Math.max(src.width, src.height);
-    [w, h] = rw >= rh ? [long, (long * rh) / rw] : [(long * rw) / rh, long];
-  } else if (src.width / src.height > rw / rh) {
-    [w, h] = [(src.height * rw) / rh, src.height];
-  } else {
-    [w, h] = [src.width, (src.width * rh) / rw];
-  }
-  return { width: even(w), height: even(h) };
+  return width / height > 9 / 16 ? { width: even((height * 9) / 16), height } : { width, height: even((width * 16) / 9) };
 };
 
-const buildVersion = (edit, log) => {
+// ---------- сборка ----------
+
+const build = () => {
+  const mood = resolveMood(edit.mood);
+  if (mood) console.log(`  настроение: ${mood.label}, сила ${mood.strength}/5`);
   const cut = { removePauses: true, removeRetakes: true, maxPauseMs: 450, padBeforeMs: 120, padAfterMs: 200, ...edit.cut };
 
-  // Выкинутые слова по клипам: авто-дубли + ручные вырезы.
   const dropped = clips.map((c) => (cut.removeRetakes ? detectRetakes(c.words) : new Set()));
   const removeRanges = clips.map(() => []);
   for (const r of cut.remove ?? []) {
@@ -239,28 +223,25 @@ const buildVersion = (edit, log) => {
     removeRanges[a.clip].push([a.ms, b.ms]);
     clips[a.clip].words.forEach((w, i) => mid(w) >= a.ms && mid(w) < b.ms && dropped[a.clip].add(i));
   }
-  if (log) {
-    clips.forEach((c, ci) => {
-      const groups = [];
-      [...dropped[ci]].sort((x, y) => x - y).forEach((i) => {
-        const g = groups[groups.length - 1];
-        if (g && g.last === i - 1) (g.text += " " + c.words[i].text), (g.last = i);
-        else groups.push({ at: c.words[i].startMs, text: c.words[i].text, last: i });
-      });
-      groups.forEach((g) => console.log(`  вырезано [${ci}] ${(g.at / 1000).toFixed(1)}s: ${g.text}`));
+  clips.forEach((c, ci) => {
+    const groups = [];
+    [...dropped[ci]].sort((x, y) => x - y).forEach((i) => {
+      const g = groups[groups.length - 1];
+      if (g && g.last === i - 1) (g.text += " " + c.words[i].text), (g.last = i);
+      else groups.push({ at: c.words[i].startMs, text: c.words[i].text, last: i });
     });
-  }
+    groups.forEach((g) => console.log(`  вырезано [${ci}] ${(g.at / 1000).toFixed(1)}s: ${g.text}`));
+  });
 
-  // Секции (порядок = порядок в выходном видео). По умолчанию — каждый клип целиком.
+  // Секции задают порядок и границы кусков в ролике; по умолчанию каждый клип целиком.
   const secAnchor = (a, clip) =>
     typeof a === "number" ? a : resolveAnchor(typeof a === "string" ? { phrase: a, offsetMs: -cut.padBeforeMs } : { offsetMs: -cut.padBeforeMs, ...a }, clip).ms;
-  const sectionsDef = edit.sections ?? clips.map((_, i) => ({ clip: i }));
-  const sections = sectionsDef.map((s) => {
+  const sections = (edit.sections ?? clips.map((_, i) => ({ clip: i }))).map((s) => {
     const ci = s.clip ?? 0;
     const clip = clips[ci];
     const S = Math.max(0, s.from != null ? secAnchor(s.from, ci) : 0);
     const E = Math.min(clip.durationMs, s.to != null ? secAnchor(s.to, ci) : clip.durationMs);
-    let cuts = [...removeRanges[ci]];
+    const cuts = [...removeRanges[ci]];
     let ranges;
     if (clip.words.length === 0) ranges = subtract([S, E], cuts);
     else {
@@ -279,28 +260,20 @@ const buildVersion = (edit, log) => {
       }
       ranges = kept.length ? (consider(prevEnd, E, prevEnd + cut.padAfterMs, E), subtract([S, E], cuts)) : [];
     }
-    return { clip: ci, transition: s.transition, ranges: ranges.filter(([a, b]) => b - a >= 150) };
+    return { clip: ci, ranges: ranges.filter(([a, b]) => b - a >= 150) };
   });
 
-  // Выходной таймлайн.
-  const introMs = 0;
   const punch = edit.punchIn ?? 1;
   const segs = [];
-  let t = introMs;
-  sections.forEach((sec, si) => {
-    const tr = si > 0 ? (sec.transition ?? edit.transition ?? null) : null;
+  let t = 0;
+  sections.forEach((sec, si) =>
     sec.ranges.forEach(([a, b], k) => {
-      const prev = segs[segs.length - 1];
-      const transitionIn =
-        k === 0 && tr && tr.type !== "cut" && prev
-          ? { type: tr.type, durationMs: tr.durationMs ?? 400, prevSrc: prev.src, prevSrcToMs: prev.srcToMs, prevPunch: prev.punch }
-          : null;
-      segs.push({ clip: sec.clip, section: si, src: clips[sec.clip].src, srcFromMs: a, srcToMs: b, outFromMs: t, outToMs: t + (b - a), punch: k % 2 ? punch : 1, transitionIn });
+      const c = clips[sec.clip];
+      segs.push({ clip: sec.clip, section: si, src: c.src, voiceSrc: c.voiceSrc, srcFromMs: a, srcToMs: b, outFromMs: t, outToMs: t + (b - a), punch: k % 2 ? punch : 1 });
       t += b - a;
-    });
-  });
-  const bodyEnd = t;
-  const outroMs = 0;
+    }),
+  );
+  const durationMs = t;
 
   const toOut = (clip, ms, dir) => {
     const inside = segs.find((s) => s.clip === clip && ms >= s.srcFromMs && ms < s.srcToMs);
@@ -310,11 +283,15 @@ const buildVersion = (edit, log) => {
       dir === "forward"
         ? same.filter((x) => x.srcFromMs >= ms).sort((x, y) => x.srcFromMs - y.srcFromMs)[0]
         : same.filter((x) => x.srcToMs <= ms).sort((x, y) => y.srcToMs - x.srcToMs)[0];
-    return s ? (dir === "forward" ? s.outFromMs : s.outToMs) : dir === "forward" ? bodyEnd : introMs;
+    return s ? (dir === "forward" ? s.outFromMs : s.outToMs) : dir === "forward" ? durationMs : 0;
+  };
+  const outAt = (a) => {
+    const r = resolveAnchor(a);
+    return toOut(r.clip, r.ms, "forward");
   };
   const sectionEndAt = (outMs) => {
     const s = segs.find((x) => outMs >= x.outFromMs && outMs < x.outToMs);
-    return s ? Math.max(...segs.filter((x) => x.section === s.section).map((x) => x.outToMs)) : bodyEnd;
+    return s ? Math.max(...segs.filter((x) => x.section === s.section).map((x) => x.outToMs)) : durationMs;
   };
   const span = (item) => {
     const s = resolveAnchor(item.start);
@@ -329,6 +306,7 @@ const buildVersion = (edit, log) => {
   };
   const valid = (x) => x.outToMs - x.outFromMs >= 100;
 
+  // Слова на выходном таймлайне.
   const words = [];
   clips.forEach((c, ci) =>
     c.words.forEach((w, i) => {
@@ -341,7 +319,7 @@ const buildVersion = (edit, log) => {
     }),
   );
   words.sort((a, b) => a.startMs - b.startMs);
-  // Whisper иногда отдаёт «%» и т.п. отдельным словом — приклеиваем к предыдущему.
+  // Whisper иногда отдаёт «%» отдельным словом.
   for (let i = words.length - 1; i > 0; i--) {
     if (!norm(words[i].text) && words[i].startMs - words[i - 1].endMs < 300) {
       words[i - 1].text += words[i].text;
@@ -350,121 +328,195 @@ const buildVersion = (edit, log) => {
     }
   }
 
-  const fit = edit.fit ?? "crop";
-  const brollContent = (b) =>
-    b.src ? { kind: /\.(mp4|mov|webm|mkv)$/i.test(b.src) ? "video" : "image", src: b.src.startsWith("assets/") ? b.src : publish(findMedia(b.src), "media") } : { kind: b.type, ...b.data };
-
-  // Текстовый слой субтитров: edits/<name>.subs.txt (если нет — черновик из речи, дальше правится руками).
   const subsPath = path.join("edits", `${name}.subs.txt`);
   if (!fs.existsSync(subsPath)) {
     fs.writeFileSync(subsPath, draftSubs(words, { maxChars: edit.subtitles?.maxChars ?? 30 }), "utf-8");
     console.log(`  создан черновик субтитров: ${subsPath}`);
   }
   const subs = buildBlocks(fs.readFileSync(subsPath, "utf-8"), words);
-  if (log) console.log(`  субтитры: ${subs.blocks.length} блоков, ${subs.unmatched}/${subs.total} слов без точного совпадения с речью`);
+  console.log(`  субтитры: ${subs.blocks.length} блоков, ${subs.unmatched}/${subs.total} слов без точного совпадения с речью`);
   for (const w of subs.warnings) console.log(`  ⚠ не влезет в 2 строки: ${w}`);
 
-  const durationMs = bodyEnd + outroMs;
   const cards = (edit.cards ?? [])
-    .map((c) => {
-      const sp = span(c);
-      const ans = c.answerAt != null ? resolveAnchor(c.answerAt) : null;
-      return { ...sp, title: c.title, question: c.question, options: c.options, answer: c.answer, answerOutMs: ans ? toOut(ans.clip, ans.ms, "forward") : undefined };
-    })
+    .map((c) => ({
+      ...span(c),
+      title: c.title,
+      question: c.question,
+      options: c.options,
+      answer: c.answer,
+      answerOutMs: c.answerAt != null ? outAt(c.answerAt) : undefined,
+    }))
     .filter(valid);
   const titles = (edit.titles ?? []).map((x) => ({ ...span(x), text: x.text, position: x.position ?? "top", topPct: x.topPct })).filter(valid);
+  const broll = (edit.broll ?? [])
+    .map((b) => ({
+      ...span(b),
+      mode: b.mode ?? "full",
+      content: b.src ? { kind: /\.(mp4|mov|webm|mkv)$/i.test(b.src) ? "video" : "image", src: publish(findMedia(b.src), "media") } : { kind: b.type, ...b.data },
+    }))
+    .filter(valid);
 
-  // Видео в рамке: куски исходника встают на фразы рассказчика (at) и идут подряд до следующего куска / end.
+  // Видео в рамке: куски вставки встают на фразы рассказчика и идут подряд до следующего куска.
   let inset = null;
   if (edit.inset) {
     const ins = edit.inset;
     const src = publish(findMedia(ins.src), "media");
-    const outAt = (a) => {
-      const r = resolveAnchor(a);
-      return toOut(r.clip, r.ms, "forward");
-    };
     const starts = ins.pieces.map((pc) => outAt(pc.at));
     const endMs = ins.end != null ? outAt(ins.end) : durationMs;
     const pieces = ins.pieces.map((pc, i) => ({ src, outFromMs: starts[i], outToMs: starts[i + 1] ?? endMs, srcFromMs: pc.from * 1000 }));
-    const insProbe = probe(findMedia(ins.src));
+    const { width, height } = probe(path.join("public", src));
     inset = {
       outFromMs: starts[0],
       outToMs: endMs,
       topPct: ins.topPct ?? 0.55,
       widthPct: ins.widthPct ?? 0.78,
       volume: ins.volume ?? 0.05,
-      aspect: insProbe.width / insProbe.height,
+      aspect: width / height,
       borderColor: ins.borderColor ?? "#111317",
       pieces,
     };
-    if (log) pieces.forEach((pc) => console.log(`  рамка: ${(pc.outFromMs / 1000).toFixed(1)}–${(pc.outToMs / 1000).toFixed(1)}s ← ${ins.src} с ${(pc.srcFromMs / 1000).toFixed(1)}s`));
+    pieces.forEach((pc) => console.log(`  рамка: ${(pc.outFromMs / 1000).toFixed(1)}–${(pc.outToMs / 1000).toFixed(1)}s ← ${ins.src} с ${(pc.srcFromMs / 1000).toFixed(1)}s`));
   }
 
-  // Камера: авто-ключи по напряжённости речи + ручные пики; под карточками/плашками зум ограничен.
+  // Камера: наезды по напряжённости речи; под карточками, плашками и рамкой зум ограничен.
   const rmsAt = (outMs) => {
     const s = segs.find((x) => outMs >= x.outFromMs && outMs < x.outToMs);
     if (!s) return 0;
     const r = clips[s.clip].rms;
     return r[Math.min(r.length - 1, Math.max(0, Math.floor((s.srcFromMs + outMs - s.outFromMs) / 100)))] ?? 0;
   };
-  const cam = { enabled: true, maxWithOverlay: 1.1, ...edit.camera };
-  const intensity = makeIntensity(durationMs, rmsAt, words);
+  const cam = { enabled: true, maxWithOverlay: 1.1, maxWithInset: 1.04, ...mood?.camera, ...edit.camera };
   const camera = cam.enabled
     ? {
-        keys: planCamera(durationMs, intensity, subs.blocks.map((b) => b.fromMs), cam),
-        peaks: (cam.peaks ?? []).map((pk) => {
-          const a = resolveAnchor(pk.at);
-          const at = toOut(a.clip, a.ms, "forward");
-          return { outFromMs: at, outToMs: at + (pk.holdMs ?? 1200), scale: pk.scale ?? 1.3, rampMs: pk.rampMs ?? 250 };
-        }),
-        caps: [...cards, ...titles, ...(inset ? [inset] : [])].map((x) => ({ outFromMs: x.outFromMs, outToMs: x.outToMs, max: x === inset ? (cam.maxWithInset ?? 1.04) : cam.maxWithOverlay })),
+        keys: planCamera(durationMs, makeIntensity(durationMs, rmsAt, words), subs.blocks.map((b) => b.fromMs), cam),
+        caps: [...cards, ...titles, ...(inset ? [inset] : [])].map((x) => ({ outFromMs: x.outFromMs, outToMs: x.outToMs, max: x === inset ? cam.maxWithInset : cam.maxWithOverlay })),
       }
-    : { keys: [], peaks: [], caps: [] };
+    : { keys: [], caps: [] };
+
+  // Музыка: "auto" — первый трек из music/<папка настроения>.
+  let music = null;
+  if (edit.music) {
+    const m = edit.music === "auto" ? { ...mood?.music, dir: path.join(MUSIC_DIR, mood?.music.dir ?? "") } : typeof edit.music === "string" ? { src: edit.music } : edit.music;
+    const mdir = m.dir ? path.resolve(ROOT, m.dir) : MUSIC_DIR;
+    const file = m.src ? [path.join(mdir, m.src), path.resolve(ROOT, m.src)].find((x) => fs.existsSync(x)) : listAudio(mdir)[0];
+    if (!file) console.log(`  ⚠ музыка не найдена (${m.src ?? "папка пуста"}, ${mdir})`);
+    else
+      music = {
+        src: publish(file, "music"),
+        volume: m.volume ?? 0.16,
+        duckTo: m.duckTo ?? 0.06,
+        fadeInMs: m.fadeInMs ?? 800,
+        fadeOutMs: m.fadeOutMs ?? 1500,
+        speech: speechIntervals(words),
+      };
+  }
+
+  // Звуковые эффекты: авто на события монтажа + ручные на фразы. Варианты из папки чередуются по кругу.
+  const sfxCfg = { auto: true, volume: 0.5, minGapMs: 500, ...mood?.sfx, ...edit.sfx };
+  const lib = scanLibrary(sfxCfg.dir ? path.resolve(ROOT, sfxCfg.dir) : SFX_DIR);
+  const ALIAS = {
+    whoosh: ["whoosh", "swoosh", "transition"],
+    pop: ["pop", "click", "bubble"],
+    ding: ["ding", "correct", "success", "notification"],
+    impact: ["impact", "boom", "hit", "whoosh"],
+  };
+  const turn = {};
+  const pick = (cat) => {
+    for (const c of ALIAS[cat] ?? [cat]) {
+      const files = lib[c];
+      if (files?.length) {
+        turn[c] = (turn[c] ?? -1) + 1;
+        return { file: files[turn[c] % files.length], cat: c };
+      }
+    }
+    return null;
+  };
+  const events = [];
+  if (sfxCfg.auto) {
+    if (edit.hook) {
+      events.push({ at: 0, cat: "impact", vol: 0.8 });
+      const ai = edit.hook.words.findIndex((w) => w.accent);
+      if (ai > 0) events.push({ at: ai * 133 + 80, cat: "pop" });
+    }
+    titles.forEach((x) => events.push({ at: x.outFromMs, cat: "pop" }));
+    cards.forEach((c) => {
+      events.push({ at: c.outFromMs, cat: "whoosh" });
+      if (c.answerOutMs != null) events.push({ at: c.answerOutMs, cat: "ding" });
+    });
+    if (inset) {
+      events.push({ at: inset.outFromMs, cat: "whoosh" });
+      events.push({ at: Math.max(inset.outFromMs, inset.outToMs - 200), cat: "whoosh", vol: 0.6 });
+    }
+    broll.forEach((b) => events.push({ at: b.outFromMs, cat: b.mode === "full" ? "whoosh" : "pop" }));
+    subs.blocks.filter((b) => b.kind === "number").forEach((b) => events.push({ at: b.fromMs, cat: "pop" }));
+  }
+  for (const it of sfxCfg.items ?? []) events.push({ at: outAt(it.at) + (it.offsetMs ?? 0), cat: it.sound, vol: it.volume, manual: true });
+  events.sort((a, b) => a.at - b.at);
+  const sfx = [];
+  const missing = new Set();
+  let lastAt = -Infinity;
+  for (const e of events) {
+    if (!e.manual && e.at - lastAt < sfxCfg.minGapMs) continue;
+    const hit = pick(e.cat);
+    if (!hit) {
+      missing.add(e.cat);
+      continue;
+    }
+    sfx.push({ src: publish(hit.file, `sfx/${hit.cat}`), atMs: Math.max(0, e.at), volume: (e.vol ?? 1) * sfxCfg.volume * (sfxCfg.categoryVolume?.[e.cat] ?? 1) });
+    lastAt = e.at;
+  }
+  console.log(
+    `  звук: ${clips.some((c) => c.voiceSrc) ? "срез низов голоса" : "голос как есть"}, эффектов ${sfx.length}` +
+      `${missing.size ? ` (нет в библиотеке: ${[...missing].join(", ")})` : ""}, музыка: ${music ? path.basename(music.src) : "нет"}`,
+  );
+
   return {
-    ...frameSize(clips[0], edit.format, fit),
+    ...frameSize(clips[0]),
     durationMs,
-    fit,
     focus: { x: 0.5, y: 0.5, ...edit.focus },
     segments: segs,
-    zooms: (edit.zooms ?? []).map((z) => ({ ...span(z), scale: z.scale ?? 1.12 })).filter(valid),
-    broll: (edit.broll ?? []).map((b) => ({ ...span(b), mode: b.mode ?? "full", content: brollContent(b) })).filter(valid),
+    broll,
+    music,
+    sfx,
     titles,
     cards,
     camera,
     inset,
     hook: edit.hook ? { durationMs: 3000, ...edit.hook } : null,
+    grade: mood?.grade ?? null,
+    layout: { topPct: edit.layout?.topPct ?? 0.05 },
     bottomGradient: edit.bottomGradient === false ? null : { heightPct: 0.34, opacity: 0.78, ...edit.bottomGradient },
-    progressBar: edit.progressBar ? { position: "top", ...edit.progressBar } : null,
     subtitles: {
       bottomPct: edit.subtitles?.bottomPct ?? 0.24,
       maxWidthPct: edit.subtitles?.maxWidthPct ?? 0.69,
       blocks: subs.blocks,
-      // Пока на экране рамка — субтитры под ней (subtitles.underInsetBottomPct).
+      // пока на экране рамка, субтитры стоят под ней
       zones: inset && edit.subtitles?.underInsetBottomPct != null ? [{ outFromMs: 0, outToMs: inset.outToMs, bottomPct: edit.subtitles.underInsetBottomPct }] : [],
     },
   };
 };
 
-// ---------- версии и рендер ----------
+// ---------- запуск ----------
 
-const versions = (baseEdit.versions ?? [{ name: "main" }]).filter((v) => !only || v.name === only);
 fs.mkdirSync(path.join("build", name), { recursive: true });
 fs.mkdirSync(OUT, { recursive: true });
 
-versions.forEach((v, vi) => {
-  const edit = { ...baseEdit, ...v };
-  const props = buildVersion(edit, vi === 0);
-  const propsPath = path.join("build", name, `${v.name}.props.json`);
-  fs.writeFileSync(propsPath, JSON.stringify(props, null, 1), "utf-8");
-  const srcMs = clips.reduce((s, c) => s + c.durationMs, 0);
-  console.log(
-    `[${v.name}] ${props.width}x${props.height}, ${(srcMs / 1000).toFixed(1)}s → ${(props.durationMs / 1000).toFixed(1)}s, ` +
-      `${props.segments.length} кусков, ${props.cards.length} карточек, ${props.camera.keys.length - 1} движений камеры, ${props.broll.length} b-roll → ${propsPath}`,
-  );
-  if (doRender) {
-    const out = path.join(OUT, versions.length > 1 ? `${name}_${v.name}.mp4` : `${name}.mp4`);
-    execSync(`npx --no-install remotion render src/index.ts Edit "${out}" --props="${propsPath}" --log=error`, { stdio: "inherit" });
-    if (!fs.existsSync(out)) throw new Error(`Рендер не создал файл: ${out}`);
-    console.log(`  → ${out}`);
+const props = build();
+const propsPath = path.join("build", name, "9x16.props.json");
+fs.writeFileSync(propsPath, JSON.stringify(props, null, 1), "utf-8");
+const srcMs = clips.reduce((s, c) => s + c.durationMs, 0);
+console.log(
+  `[9x16] ${props.width}x${props.height}, ${(srcMs / 1000).toFixed(1)}s → ${(props.durationMs / 1000).toFixed(1)}s, ` +
+    `${props.segments.length} кусков, ${props.cards.length} карточек, ${props.camera.keys.length - 1} движений камеры, ${props.broll.length} b-roll → ${propsPath}`,
+);
+
+if (doRender) {
+  const out = path.join(OUT, `${edit.output ?? name}.mp4`);
+  execSync(`npx --no-install remotion render src/index.ts Edit "${out}" --props="${propsPath}" --log=error`, { stdio: "inherit" });
+  if (!fs.existsSync(out)) throw new Error(`Рендер не создал файл: ${out}`);
+  if (edit.audio?.normalize !== false) {
+    const n = normalizeFinal(out, { lufs: edit.audio?.lufs ?? -14 });
+    console.log(`  громкость: ${n.before.toFixed(1)} → ${n.after.toFixed(1)} LUFS`);
   }
-});
+  console.log(`  → ${out}`);
+}

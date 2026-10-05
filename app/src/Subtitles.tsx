@@ -2,16 +2,39 @@ import React from "react";
 import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { C, FONT_HEAD } from "./theme";
 
-// Блоки готовит текстовый слой (scripts/subs.mjs): текст уже нормализован, разбит по смыслу.
+// Блоки готовит scripts/subs.mjs.
 export type SubWord = { text: string; startMs: number; endMs: number } | { br: true };
 export type SubBlock = { kind: "text" | "number"; number?: string; words: SubWord[]; fromMs: number; toMs: number };
-// zones — участки, где субтитры стоят на другой высоте (например, под рамкой с видео).
+// zones — участки с другой высотой субтитров (например, под рамкой)
 export type SubtitleStyle = { bottomPct: number; maxWidthPct: number; blocks: SubBlock[]; zones?: { outFromMs: number; outToMs: number; bottomPct: number }[] };
 
-// Мягкая размытая тень — у субтитров и у всей графики.
+// Короткий предлог или союз не остаётся в конце строки: склеиваем его со следующим словом.
+const SHORT = new Set("в во и а на о об с со к ко у по за из от до не ни но же ли бы для что как при без".split(" "));
+const glue = (words: SubWord[]): SubWord[][] => {
+  const out: SubWord[][] = [];
+  let cur: SubWord[] = [];
+  words.forEach((w, i) => {
+    if ("br" in w) {
+      if (cur.length) out.push(cur);
+      out.push([w]);
+      cur = [];
+      return;
+    }
+    cur.push(w);
+    const next = words[i + 1];
+    const short = SHORT.has(w.text.toLowerCase().replace(/[^\p{L}]/gu, ""));
+    if (!(short && next && !("br" in next))) {
+      out.push(cur);
+      cur = [];
+    }
+  });
+  if (cur.length) out.push(cur);
+  return out;
+};
+
 export const SOFT_TEXT_SHADOW = "0 4px 28px rgba(0,0,0,0.55), 0 1px 4px rgba(0,0,0,0.35)";
 
-// Субтитры до 2 строк, текущее слово — янтарём; «нумерация» — только большая цифра. Самый верхний слой.
+// До 2 строк, текущее слово янтарное; нумерация — большая цифра.
 export const Subtitles: React.FC<{ style: SubtitleStyle }> = ({ style }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
@@ -46,7 +69,6 @@ export const Subtitles: React.FC<{ style: SubtitleStyle }> = ({ style }) => {
     );
   }
 
-  // Текущее слово — янтарём, остальные белые; без приглушения и подпрыгиваний.
   const spoken = block.words.filter((w): w is Exclude<SubWord, { br: true }> => !("br" in w));
   const active = [...spoken].reverse().find((w) => nowMs >= w.startMs);
   return (
@@ -66,13 +88,21 @@ export const Subtitles: React.FC<{ style: SubtitleStyle }> = ({ style }) => {
           transform: `scale(${0.92 + 0.08 * pop})`,
         }}
       >
-        {block.words.map((w, i) =>
-          "br" in w ? (
-            <br key={i} />
+        {glue(block.words).map((group, gi) =>
+          group[0] && "br" in group[0] ? (
+            <br key={gi} />
           ) : (
-            <span key={i} style={{ color: w === active ? C.amber : "white" }}>
-              {w.text}{" "}
-            </span>
+            // обычный пробел снаружи группы, чтобы строка переносилась
+            <React.Fragment key={gi}>
+              <span style={{ whiteSpace: "nowrap" }}>
+              {(group as Exclude<SubWord, { br: true }>[]).map((w, i) => (
+                <span key={i} style={{ color: w === active ? C.amber : "white" }}>
+                  {w.text}
+                  {i < group.length - 1 ? " " : ""}
+                </span>
+              ))}
+              </span>{" "}
+            </React.Fragment>
           ),
         )}
       </div>

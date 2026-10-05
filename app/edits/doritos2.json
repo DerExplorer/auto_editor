@@ -7,8 +7,6 @@
     "removePauses": false,
     "removeRetakes": false
   },
-  "format": "9:16",
-  "fit": "crop",
   "focus": {
     "x": 0.5,
     "y": 0.3
@@ -117,10 +115,5 @@
     "inMax": 1.08,
     "maxWithOverlay": 1.1,
     "maxWithInset": 1.04
-  },
-  "versions": [
-    {
-      "name": "9x16"
-    }
-  ]
+  }
 }

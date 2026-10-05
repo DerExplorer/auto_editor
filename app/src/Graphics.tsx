@@ -4,13 +4,13 @@ import { SOFT_TEXT_SHADOW } from "./Subtitles";
 import { C, FONT_HEAD, FONT_TEXT } from "./theme";
 import type { BRollContent, BRollItem, CardItem, Hook, Inset, TitleItem } from "./types";
 
-// Безопасные зоны Reels (app/docs/reels-safe-zones.webp), доли кадра 1080×1920:
-// сверху/снизу по 250 px, по бокам 70 px, справа в нижней половине — колонка кнопок 170 px,
-// над нижней зоной — полоса подписи. Лицо ≈ 0.25–0.62 по высоте не перекрываем.
+// Безопасные зоны Reels (доли кадра): по бокам 70 px, сверху и снизу по 250 px.
 export const SAFE = { top: 250 / 1920, side: 70 / 1080, bottom: 250 / 1920 };
-// Верхние элементы (хук, карточки, плашки) — на привычной высоте 5%: пользователь подтвердил,
-// что так нормально; главное — не прижимать к краям по бокам.
-const TOP = 0.05;
+let TOP = 0.05;
+// высота хука, карточек и плашек (layout.topPct)
+export const setTopPct = (v: number) => {
+  TOP = v;
+};
 const SIDE = `${SAFE.side * 100}%`;
 const SOFT_SHADOW = "0 18px 60px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.2)";
 
@@ -30,7 +30,7 @@ const useInOut = (durationMs: number, outFrames = 6) => {
   return { frame, fps, enter, exit };
 };
 
-// ---------- Заголовок-хук: слова разного размера въезжают сверху по одному ----------
+// ---------- Хук ----------
 
 const HOOK_SIZE = { s: 0.062, m: 0.085, l: 0.108, xl: 0.15 };
 
@@ -49,7 +49,7 @@ export const HookTitle: React.FC<{ hook: Hook }> = ({ hook }) => {
       {hookTop <= 0.1 ? (
         <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: "36%", background: `linear-gradient(180deg, ${C.shade(0.55)}, ${C.shade(0)})`, opacity: exit }} />
       ) : (
-        // Хук не сверху (там лицо) — мягкая тёмная полоса под ним для читаемости на светлом фоне.
+        // хук в середине кадра: тёмная полоса для читаемости
         <div
           style={{
             position: "absolute",
@@ -79,7 +79,7 @@ export const HookTitle: React.FC<{ hook: Hook }> = ({ hook }) => {
         {lines.map((line, li) => (
           <div key={li} style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: base * 0.02 }}>
             {line.map(({ w, i }) => {
-              // Первое слово видно уже на первом кадре, остальные въезжают сверху с шагом ~130 мс.
+              // первое слово видно сразу, остальные въезжают по очереди
               const p = i === 0 ? 1 : spring({ frame: frame - i * 4, fps, config: { damping: 13, mass: 0.6 } });
               const fontSize = base * HOOK_SIZE[w.size];
               return (
@@ -110,7 +110,7 @@ export const HookTitle: React.FC<{ hook: Hook }> = ({ hook }) => {
   );
 };
 
-// ---------- Нижний градиент под субтитры (не доходит до лица) ----------
+// ---------- Нижний градиент ----------
 
 export const BottomGradient: React.FC<{ heightPct: number; opacity: number }> = ({ heightPct, opacity }) => (
   <div
@@ -125,7 +125,7 @@ export const BottomGradient: React.FC<{ heightPct: number; opacity: number }> = 
   />
 );
 
-// ---------- Плашка-акцент (янтарная, наклон −3°) ----------
+// ---------- Плашка ----------
 
 export const TitlePlate: React.FC<{ item: TitleItem }> = ({ item }) => {
   const base = useBase();
@@ -157,7 +157,7 @@ export const TitlePlate: React.FC<{ item: TitleItem }> = ({ item }) => {
   );
 };
 
-// ---------- Карточка вопроса: компактная, в верхней безопасной зоне, варианты в одну строку ----------
+// ---------- Карточка вопроса ----------
 
 export const QuizCard: React.FC<{ card: CardItem }> = ({ card }) => {
   const base = useBase();
@@ -261,8 +261,7 @@ const Bars: React.FC<{ c: Extract<BRollContent, { kind: "bars" }>; size: number 
   );
 };
 
-// Полноэкранная инфографика на весь кадр: смысл в зоне 8–60% высоты, нижняя треть свободна под субтитры,
-// по бокам — не ближе безопасного отступа.
+// Полноэкранная инфографика: смысл выше нижней трети, там субтитры.
 const Ring: React.FC<{ c: Extract<BRollContent, { kind: "ring" }> }> = ({ c }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
@@ -328,7 +327,7 @@ export const BRoll: React.FC<{ item: BRollItem }> = ({ item }) => {
     return <AbsoluteFill style={{ opacity: Math.min(e, exit), transform: `scale(${1.03 - 0.03 * e})` }}>{media}</AbsoluteFill>;
   }
 
-  // pip — слева от лица, между карточками сверху и субтитрами снизу.
+  // pip — слева от лица
   const size = base * 0.25;
   const media =
     c.kind === "video" ? (
@@ -361,21 +360,7 @@ export const BRoll: React.FC<{ item: BRollItem }> = ({ item }) => {
   );
 };
 
-// ---------- Прогресс-бар ----------
-
-export const ProgressBar: React.FC<{ position: "top" | "bottom" }> = ({ position }) => {
-  const frame = useCurrentFrame();
-  const { durationInFrames } = useVideoConfig();
-  const base = useBase();
-  const h = Math.max(4, Math.round(base * 0.007));
-  return (
-    <div style={{ position: "absolute", left: 0, right: 0, [position]: 0, height: h, background: "rgba(255,255,255,0.18)" }}>
-      <div style={{ width: `${(frame / Math.max(1, durationInFrames - 1)) * 100}%`, height: "100%", background: C.amber }} />
-    </div>
-  );
-};
-
-// ---------- Видео в рамке (горизонтальное поверх рассказчика) ----------
+// ---------- Видео в рамке ----------
 
 export const InsetVideo: React.FC<{ inset: Inset }> = ({ inset }) => {
   const { width, height, fps } = useVideoConfig();

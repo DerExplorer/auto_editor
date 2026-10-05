@@ -1,8 +1,17 @@
 {
-  "name": "testreels1",
+  "name": "test",
+  "output": "TEST2.1",
   "inputs": [
     "Старые исходники/TestReels1.MP4"
   ],
+  "mood": {
+    "name": "inspire",
+    "strength": 3
+  },
+  "layout": {
+    "topPct": 0.07
+  },
+  "music": "auto",
   "cut": {
     "removePauses": false,
     "removeRetakes": false
@@ -197,8 +206,6 @@
     }
   ],
   "camera": {
-    "inMin": 1.06,
-    "inMax": 1.08,
     "maxWithOverlay": 1.1
   }
 }
