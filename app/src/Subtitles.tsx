@@ -57,7 +57,7 @@ export const Subtitles: React.FC<{ style: SubtitleStyle }> = ({ style }) => {
             fontSize: base * 0.21,
             lineHeight: 0.85,
             letterSpacing: "-0.05em",
-            color: C.amber,
+            color: C.highlight,
             textShadow: SOFT_TEXT_SHADOW,
             transform: `scale(${0.5 + 0.5 * pop}) rotate(${(1 - pop) * -8}deg)`,
             opacity: Math.min(1, pop * 2),
@@ -96,7 +96,7 @@ export const Subtitles: React.FC<{ style: SubtitleStyle }> = ({ style }) => {
             <React.Fragment key={gi}>
               <span style={{ whiteSpace: "nowrap" }}>
               {(group as Exclude<SubWord, { br: true }>[]).map((w, i) => (
-                <span key={i} style={{ color: w === active ? C.amber : "white" }}>
+                <span key={i} style={{ color: w === active ? C.highlight : "white" }}>
                   {w.text}
                   {i < group.length - 1 ? " " : ""}
                 </span>

@@ -1,6 +1,7 @@
 import React from "react";
 import { Composition } from "remotion";
 import { Edit } from "./Edit";
+import { DEFAULT_TOP } from "./Graphics";
 import type { EditProps } from "./types";
 
 const FPS = 30;
@@ -17,12 +18,13 @@ const defaultProps: EditProps = {
   cards: [],
   hook: null,
   grade: null,
-  layout: { topPct: 0.05 },
+  layout: { topPct: DEFAULT_TOP },
   music: null,
   sfx: [],
   inset: null,
   bottomGradient: null,
   subtitles: { bottomPct: 0.24, maxWidthPct: 0.69, blocks: [] },
+  palette: null,
 };
 
 export const Root: React.FC = () => (

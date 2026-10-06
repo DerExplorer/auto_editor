@@ -1,12 +1,14 @@
 import React from "react";
-import { AbsoluteFill, Easing, Img, interpolate, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Easing, Img, interpolate, Loop, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { SOFT_TEXT_SHADOW } from "./Subtitles";
 import { C, FONT_HEAD, FONT_TEXT } from "./theme";
-import type { BRollContent, BRollItem, CardItem, Hook, Inset, TitleItem } from "./types";
+import type { BRollContent, BRollItem, CardItem, Hook, Inset, OverlayItem, TitleItem } from "./types";
 
-// Безопасные зоны Reels (доли кадра): по бокам 70 px, сверху и снизу по 250 px.
+// Безопасные зоны (доли кадра), разметка — docs/safe-zones: по бокам 70 px, сверху и снизу по 250 px.
 export const SAFE = { top: 250 / 1920, side: 70 / 1080, bottom: 250 / 1920 };
-let TOP = 0.05;
+// 9% (173 px): ниже шапки Reels (117 px) и почти целиком ниже вкладок TikTok/Shorts (до 216 px)
+export const DEFAULT_TOP = 0.09;
+let TOP = DEFAULT_TOP;
 // высота хука, карточек и плашек (layout.topPct)
 export const setTopPct = (v: number) => {
   TOP = v;
@@ -95,7 +97,7 @@ export const HookTitle: React.FC<{ hook: Hook }> = ({ hook }) => {
                     opacity: Math.min(1, p * 1.5),
                     transform: `translateY(${(1 - p) * -fontSize * 0.9}px) ${w.accent ? "rotate(-3deg)" : ""}`,
                     ...(w.accent
-                      ? { color: C.ink, background: C.amber, borderRadius: pill, padding: `${fontSize * 0.06}px ${fontSize * 0.26}px ${fontSize * 0.1}px`, boxShadow: SOFT_SHADOW }
+                      ? { color: C.onAccent, background: C.accent, borderRadius: pill, padding: `${fontSize * 0.06}px ${fontSize * 0.26}px ${fontSize * 0.1}px`, boxShadow: SOFT_SHADOW }
                       : { color: "white", textShadow: SOFT_TEXT_SHADOW }),
                   }}
                 >
@@ -140,8 +142,8 @@ export const TitlePlate: React.FC<{ item: TitleItem }> = ({ item }) => {
           fontWeight: 800,
           fontSize: base * 0.054,
           lineHeight: 1.1,
-          color: C.ink,
-          background: C.amber,
+          color: C.onAccent,
+          background: C.accent,
           padding: `${base * 0.012}px ${base * 0.036}px ${base * 0.018}px`,
           borderRadius: pill,
           textAlign: "center",
@@ -183,8 +185,8 @@ export const QuizCard: React.FC<{ card: CardItem }> = ({ card }) => {
         <div
           style={{
             display: "inline-block",
-            background: C.amber,
-            color: C.ink,
+            background: C.accent,
+            color: C.onAccent,
             fontWeight: 800,
             fontSize: base * 0.025,
             letterSpacing: "0.08em",
@@ -211,8 +213,8 @@ export const QuizCard: React.FC<{ card: CardItem }> = ({ card }) => {
                   gap: base * 0.012,
                   padding: `${base * 0.008}px ${base * 0.022}px ${base * 0.01}px`,
                   borderRadius: pill,
-                  background: lit > 0.5 ? C.amber : "rgba(255,255,255,0.12)",
-                  color: lit > 0.5 ? C.ink : C.paper,
+                  background: lit > 0.5 ? C.accent : "rgba(255,255,255,0.12)",
+                  color: lit > 0.5 ? C.onAccent : C.paper,
                   fontSize: base * 0.032,
                   fontWeight: 600,
                   boxShadow: lit > 0.5 ? "0 8px 26px rgba(0,0,0,0.35)" : "none",
@@ -220,7 +222,7 @@ export const QuizCard: React.FC<{ card: CardItem }> = ({ card }) => {
                   transform: `translateY(${(1 - appear) * -base * 0.02}px) scale(${1 + 0.06 * lit})`,
                 }}
               >
-                <b style={{ fontWeight: 800, color: lit > 0.5 ? C.ink : C.amber }}>{"АБВГД"[i]}</b>
+                <b style={{ fontWeight: 800, color: lit > 0.5 ? C.onAccent : C.highlight }}>{"АБВГД"[i]}</b>
                 {o}
               </div>
             );
@@ -251,7 +253,7 @@ const Bars: React.FC<{ c: Extract<BRollContent, { kind: "bars" }>; size: number 
               {last && c.badge && (
                 <div style={{ fontFamily: FONT_HEAD, fontWeight: 900, fontSize: 16 * u, color: C.ink, marginBottom: 1.5 * u, letterSpacing: "-0.03em", opacity: g }}>{c.badge}</div>
               )}
-              <div style={{ width: "100%", height: `${(b.value / max) * 58 * g}%`, background: last ? C.amber : C.grey, borderRadius: 6 * u }} />
+              <div style={{ width: "100%", height: `${(b.value / max) * 58 * g}%`, background: last ? C.accent : C.grey, borderRadius: 6 * u }} />
               <div style={{ fontSize: 8.5 * u, fontWeight: 600, color: C.text, marginTop: 2 * u, whiteSpace: "nowrap" }}>{b.label}</div>
             </div>
           );
@@ -275,7 +277,7 @@ const Ring: React.FC<{ c: Extract<BRollContent, { kind: "ring" }> }> = ({ c }) =
       <div style={{ position: "absolute", right: -base * 0.45, bottom: -base * 0.35, width: base * 1.2, height: base * 1.2, borderRadius: "50%", background: C.blob }} />
       <div style={{ position: "absolute", top: height * 0.08, left: SIDE, right: SIDE, display: "flex", flexDirection: "column", alignItems: "center" }}>
         {c.chip && (
-          <div style={{ background: C.amber, color: C.ink, fontWeight: 800, fontSize: base * 0.034, letterSpacing: "0.08em", padding: `${base * 0.008}px ${base * 0.03}px ${base * 0.011}px`, borderRadius: pill, boxShadow: "0 8px 26px rgba(0,0,0,0.12)" }}>
+          <div style={{ background: C.accent, color: C.onAccent, fontWeight: 800, fontSize: base * 0.034, letterSpacing: "0.08em", padding: `${base * 0.008}px ${base * 0.03}px ${base * 0.011}px`, borderRadius: pill, boxShadow: "0 8px 26px rgba(0,0,0,0.12)" }}>
             {c.chip.toUpperCase()}
           </div>
         )}
@@ -287,7 +289,7 @@ const Ring: React.FC<{ c: Extract<BRollContent, { kind: "ring" }> }> = ({ c }) =
               cy={r + sw / 2}
               r={r}
               fill="none"
-              stroke={C.amber}
+              stroke={C.accent}
               strokeWidth={sw}
               strokeLinecap="round"
               strokeDasharray={`${(circ * c.value * g) / 100} ${circ}`}
@@ -307,24 +309,57 @@ const Ring: React.FC<{ c: Extract<BRollContent, { kind: "ring" }> }> = ({ c }) =
 };
 
 export const BRoll: React.FC<{ item: BRollItem }> = ({ item }) => {
-  const { width, height } = useVideoConfig();
+  const { width, height, fps } = useVideoConfig();
   const base = useBase();
   const { enter, exit } = useInOut(item.outToMs - item.outFromMs, 5);
   const c = item.content;
 
   if (item.mode === "full") {
     const e = interpolate(enter, [0, 1], [0, 1], { easing: Easing.out(Easing.cubic) });
+    // с фоном файл встаёт целиком в центр (скруглённая карточка с тенью), без фона — на весь экран
+    const contain = item.fit === "contain" || (item.bg && item.fit !== "cover");
+    const fileStyle: React.CSSProperties = contain
+      ? { width: "100%", height: "100%", objectFit: "contain" }
+      : { width: "100%", height: "100%", objectFit: "cover" };
     const media =
       c.kind === "video" ? (
-        <OffthreadVideo src={staticFile(c.src)} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <OffthreadVideo src={staticFile(c.src)} muted style={fileStyle} />
       ) : c.kind === "image" ? (
-        <Img src={staticFile(c.src)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <Img src={staticFile(c.src)} style={fileStyle} />
       ) : c.kind === "ring" ? (
         <Ring c={c} />
       ) : (
-        <Bars c={c} size={width} />
+        <Bars c={c} size={item.bg ? width - 2 * SAFE.side * width : width} />
       );
-    return <AbsoluteFill style={{ opacity: Math.min(e, exit), transform: `scale(${1.03 - 0.03 * e})` }}>{media}</AbsoluteFill>;
+    const bg = item.bg ? (
+      <AbsoluteFill>
+        {item.bg.kind === "video" ? (
+          // короткие фоны (деньги ~3 с) зацикливаются
+          <Loop durationInFrames={Math.max(1, Math.round(((item.bg.durationMs ?? 60000) / 1000) * fps))}>
+            <OffthreadVideo src={staticFile(item.bg.src)} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </Loop>
+        ) : (
+          <Img src={staticFile(item.bg.src)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        )}
+      </AbsoluteFill>
+    ) : null;
+    const isFile = c.kind === "video" || c.kind === "image";
+    return (
+      <AbsoluteFill style={{ opacity: Math.min(e, exit), transform: `scale(${1.03 - 0.03 * e})` }}>
+        {bg}
+        {bg && isFile ? (
+          // смысл — выше нижней трети (там субтитры)
+          <div style={{ position: "absolute", left: SIDE, right: SIDE, top: height * 0.14, height: height * 0.5, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: base * 0.04, overflow: "hidden", boxShadow: SOFT_SHADOW, display: "flex" }}>{media}</div>
+          </div>
+        ) : bg ? (
+          // инфографика — светлой карточкой поверх фона
+          <div style={{ position: "absolute", left: SIDE, right: SIDE, top: height * 0.12, height: height * 0.52, borderRadius: base * 0.05, overflow: "hidden", boxShadow: SOFT_SHADOW }}>{media}</div>
+        ) : (
+          media
+        )}
+      </AbsoluteFill>
+    );
   }
 
   // pip — слева от лица
@@ -394,5 +429,21 @@ export const InsetVideo: React.FC<{ inset: Inset }> = ({ inset }) => {
         </Sequence>
       ))}
     </div>
+  );
+};
+
+// ---------- Оверлей ----------
+
+// Огонь, искры, стекло на чёрном фоне: режим screen убирает чёрное. Плавное появление и уход.
+export const Overlay: React.FC<{ item: OverlayItem }> = ({ item }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const dur = Math.round(((item.outToMs - item.outFromMs) / 1000) * fps);
+  const fade = Math.min(6, Math.floor(dur / 3));
+  const o = interpolate(frame, [0, fade, dur - fade, dur], [0, 1, 1, 0], clamp) * item.opacity;
+  return (
+    <AbsoluteFill style={{ mixBlendMode: "screen", opacity: o, pointerEvents: "none" }}>
+      <OffthreadVideo src={staticFile(item.src)} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+    </AbsoluteFill>
   );
 };

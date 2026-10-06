@@ -26,6 +26,7 @@ const INPUT = dirFrom("AUTO_EDITOR_IN", localCfg.inputDir, path.join(ROOT, "inpu
 const OUT = dirFrom("AUTO_EDITOR_OUT", localCfg.outputDir, path.join(ROOT, "output"));
 const SFX_DIR = dirFrom("AUTO_EDITOR_SFX", localCfg.sfxDir, path.join(ROOT, "sfx"));
 const MUSIC_DIR = dirFrom("AUTO_EDITOR_MUSIC", localCfg.musicDir, path.join(ROOT, "music"));
+const CLIENTS_DIR = dirFrom("AUTO_EDITOR_CLIENTS", localCfg.clientsDir, path.join(ROOT, "clients"));
 
 const CWD = process.cwd();
 process.chdir(APP);
@@ -40,6 +41,19 @@ if (!editPath) {
 const doRender = argv.includes("--render");
 const edit = JSON.parse(fs.readFileSync([path.resolve(CWD, editPath), path.resolve(APP, editPath)].find((x) => fs.existsSync(x)) ?? editPath, "utf-8"));
 const name = edit.name ?? path.basename(editPath, ".json");
+
+// Паспорт стиля клиента: "client": "anna" → clients/anna/brand.json (палитра и т.п.).
+const brand = (() => {
+  if (!edit.client) return null;
+  const p = path.join(CLIENTS_DIR, edit.client, "brand.json");
+  if (!fs.existsSync(p)) throw new Error(`Нет паспорта клиента ${p} (создать: npm run palette -- "#цвет" --client ${edit.client})`);
+  const b = JSON.parse(fs.readFileSync(p, "utf-8"));
+  console.log(`  клиент: ${b.name || edit.client}${b.palette ? `, акцент ${b.palette.accent}` : ""}`);
+  // Настройки клиента по умолчанию; то, что задано в edit-файле, важнее.
+  for (const k of ["mood", "music"]) if (edit[k] === undefined && b.defaults?.[k] != null) edit[k] = b.defaults[k];
+  return b;
+})();
+const palette = brand?.palette ? Object.fromEntries(["accent", "accentDeep", "onAccent", "highlight", "ink", "text", "muted", "bg", "grey", "blob"].map((k) => [k, brand.palette[k]]).filter(([, v]) => v)) : null;
 
 // ---------- исходники ----------
 
@@ -67,10 +81,25 @@ const transcribe = (file) => {
 
 fs.mkdirSync(path.join("build", "cache"), { recursive: true });
 
+const LIBRARY = path.join(ROOT, "library");
 const findMedia = (p) => {
-  const hit = [path.join(INPUT, p), path.join(ROOT, p), path.resolve(p)].find((x) => fs.existsSync(x));
+  const hit = [path.join(INPUT, p), path.join(ROOT, p), path.join(LIBRARY, p), path.resolve(p)].find((x) => fs.existsSync(x));
   if (!hit) throw new Error(`Нет файла: ${p} (искал в ${INPUT} и ${ROOT})`);
   return hit;
+};
+// "backgrounds/money" — папка темы: берём файлы по кругу, чтобы два b-roll подряд не были одинаковыми.
+const libTurn = {};
+const pickLibraryFile = (p) => {
+  const hit = findMedia(p);
+  if (!fs.statSync(hit).isDirectory()) return hit;
+  const files = fs.readdirSync(hit).filter((f) => /\.(mp4|mov|webm|jpe?g|png)$/i.test(f)).sort();
+  if (!files.length) throw new Error(`Пустая папка: ${p}`);
+  libTurn[hit] = (libTurn[hit] ?? -1) + 1;
+  return path.join(hit, files[libTurn[hit] % files.length]);
+};
+const backgroundOf = (p) => {
+  const file = pickLibraryFile(p);
+  return isVideo(file) ? { src: publish(file, "media"), kind: "video", durationMs: probe(file).durationMs } : { src: publish(file, "media"), kind: "image" };
 };
 // Remotion берёт файлы только из public/. Видео кладём туда сжатой копией (30 к/с, ≤1080p), остальное — как есть.
 const publish = (file, dir) => {
@@ -353,7 +382,19 @@ const build = () => {
       ...span(b),
       mode: b.mode ?? "full",
       content: b.src ? { kind: /\.(mp4|mov|webm|mkv)$/i.test(b.src) ? "video" : "image", src: publish(findMedia(b.src), "media") } : { kind: b.type, ...b.data },
+      // фон: путь к файлу или "backgrounds/<тема>" — первый файл темы
+      bg: b.bg ? backgroundOf(b.bg) : undefined,
+      fit: b.fit,
     }))
+    .filter(valid);
+  // Оверлеи: огонь, искры, стекло поверх кадра (режим screen). Путь или "overlays/<тема>".
+  const overlays = (edit.overlays ?? [])
+    .map((o) => {
+      const file = pickLibraryFile(o.src);
+      // без end и durationMs — на всю длину файла
+      const s = span(o.end == null && o.durationMs == null ? { ...o, durationMs: probe(file).durationMs } : o);
+      return { ...s, src: publish(file, "media"), opacity: o.opacity ?? 0.8, sound: o.sound };
+    })
     .filter(valid);
 
   // Видео в рамке: куски вставки встают на фразы рассказчика и идут подряд до следующего куска.
@@ -372,7 +413,7 @@ const build = () => {
       widthPct: ins.widthPct ?? 0.78,
       volume: ins.volume ?? 0.05,
       aspect: width / height,
-      borderColor: ins.borderColor ?? "#111317",
+      borderColor: ins.borderColor ?? palette?.accentDeep ?? "#111317",
       pieces,
     };
     pieces.forEach((pc) => console.log(`  рамка: ${(pc.outFromMs / 1000).toFixed(1)}–${(pc.outToMs / 1000).toFixed(1)}s ← ${ins.src} с ${(pc.srcFromMs / 1000).toFixed(1)}s`));
@@ -419,7 +460,12 @@ const build = () => {
     pop: ["pop", "click", "bubble"],
     ding: ["ding", "correct", "success", "notification"],
     impact: ["impact", "boom", "hit", "whoosh"],
+    hit: ["hit", "pop"],
+    number: ["number", "pop"],
+    click: ["click", "pop"],
   };
+  // Мелкие частые элементы — тише, чтобы не утомляли.
+  const CAT_VOLUME = { pop: 0.6, number: 0.7, click: 0.6, hit: 0.7, ding: 0.8 };
   const turn = {};
   const pick = (cat) => {
     for (const c of ALIAS[cat] ?? [cat]) {
@@ -436,7 +482,7 @@ const build = () => {
     if (edit.hook) {
       events.push({ at: 0, cat: "impact", vol: 0.8 });
       const ai = edit.hook.words.findIndex((w) => w.accent);
-      if (ai > 0) events.push({ at: ai * 133 + 80, cat: "pop" });
+      if (ai > 0) events.push({ at: ai * 133 + 80, cat: "hit" });
     }
     titles.forEach((x) => events.push({ at: x.outFromMs, cat: "pop" }));
     cards.forEach((c) => {
@@ -447,8 +493,14 @@ const build = () => {
       events.push({ at: inset.outFromMs, cat: "whoosh" });
       events.push({ at: Math.max(inset.outFromMs, inset.outToMs - 200), cat: "whoosh", vol: 0.6 });
     }
-    broll.forEach((b) => events.push({ at: b.outFromMs, cat: b.mode === "full" ? "whoosh" : "pop" }));
-    subs.blocks.filter((b) => b.kind === "number").forEach((b) => events.push({ at: b.fromMs, cat: "pop" }));
+    broll.forEach((b) => events.push({ at: b.outFromMs, cat: b.mode === "full" ? "whoosh" : "click" }));
+    // оверлей: звук по теме (огонь/искры — impact, стекло — glass), можно задать "sound" или false
+    overlays.forEach((o) => {
+      if (o.sound === false) return;
+      const cat = o.sound ?? (/glass/i.test(o.src) ? "glass" : /fire-sides|embers-rising/i.test(o.src) ? "fire" : "impact");
+      events.push({ at: o.outFromMs, cat, vol: 0.6 });
+    });
+    subs.blocks.filter((b) => b.kind === "number").forEach((b) => events.push({ at: b.fromMs, cat: "number" }));
   }
   for (const it of sfxCfg.items ?? []) events.push({ at: outAt(it.at) + (it.offsetMs ?? 0), cat: it.sound, vol: it.volume, manual: true });
   events.sort((a, b) => a.at - b.at);
@@ -462,7 +514,7 @@ const build = () => {
       missing.add(e.cat);
       continue;
     }
-    sfx.push({ src: publish(hit.file, `sfx/${hit.cat}`), atMs: Math.max(0, e.at), volume: (e.vol ?? 1) * sfxCfg.volume * (sfxCfg.categoryVolume?.[e.cat] ?? 1) });
+    sfx.push({ src: publish(hit.file, `sfx/${hit.cat}`), atMs: Math.max(0, e.at), volume: (e.vol ?? 1) * sfxCfg.volume * (sfxCfg.categoryVolume?.[e.cat] ?? (e.manual ? 1 : (CAT_VOLUME[e.cat] ?? 1))) });
     lastAt = e.at;
   }
   console.log(
@@ -476,6 +528,7 @@ const build = () => {
     focus: { x: 0.5, y: 0.5, ...edit.focus },
     segments: segs,
     broll,
+    overlays: overlays.map(({ sound, ...o }) => o),
     music,
     sfx,
     titles,
@@ -484,8 +537,9 @@ const build = () => {
     inset,
     hook: edit.hook ? { durationMs: 3000, ...edit.hook } : null,
     grade: mood?.grade ?? null,
-    layout: { topPct: edit.layout?.topPct ?? 0.05 },
+    layout: { topPct: edit.layout?.topPct ?? 0.09 }, // как DEFAULT_TOP в Graphics.tsx
     bottomGradient: edit.bottomGradient === false ? null : { heightPct: 0.34, opacity: 0.78, ...edit.bottomGradient },
+    palette,
     subtitles: {
       bottomPct: edit.subtitles?.bottomPct ?? 0.24,
       maxWidthPct: edit.subtitles?.maxWidthPct ?? 0.69,

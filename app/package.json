@@ -12,6 +12,8 @@
     "doctor": "node scripts/doctor.mjs",
     "build": "node scripts/build.mjs",
     "render": "node scripts/build.mjs --render",
+    "movies": "node scripts/movies.mjs",
+    "palette": "node scripts/palette.mjs",
     "typecheck": "tsc -p .",
     "test": "npm run typecheck && node scripts/smoke-test.mjs"
   },

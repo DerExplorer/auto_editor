@@ -14,6 +14,7 @@ out/
 /music/
 /reference/
 /Наработки/
+/clients/
 /*.txt
 /ПРОМПТ ДЛЯ MAC.md
 *.mp4
@@ -48,3 +49,4 @@ app/local.json
 # Personal roadmap (local only)
 ПЛАН РАЗВИТИЯ.md
 /SSounds/
+/library/

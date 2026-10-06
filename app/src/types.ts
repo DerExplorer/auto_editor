@@ -21,7 +21,10 @@ export type BRollContent =
   | { kind: "video"; src: string }
   | { kind: "bars"; title: string; subtitle?: string; bars: { label: string; value: number }[]; badge?: string }
   | { kind: "ring"; chip?: string; value: number; caption: string };
-export type BRollItem = Span & { mode: "full" | "pip"; content: BRollContent };
+// bg — фон под b-roll (видео или картинка из library/backgrounds); fit "contain" — картинка целиком поверх фона
+export type BRollItem = Span & { mode: "full" | "pip"; content: BRollContent; bg?: { src: string; kind: "video" | "image"; durationMs?: number }; fit?: "cover" | "contain" };
+// Оверлей поверх кадра, режим screen: чёрное прозрачно (огонь, искры, стекло)
+export type OverlayItem = Span & { src: string; opacity: number };
 
 export type TitleItem = Span & { text: string; position: "top" | "center"; topPct?: number };
 export type CardItem = Span & { title: string; question: string; options: string[]; answer?: number; answerOutMs?: number };
@@ -39,6 +42,20 @@ export type Inset = Span & {
   pieces: { src: string; outFromMs: number; outToMs: number; srcFromMs: number }[];
 };
 
+// Цвета графики по ролям; собирается из любимых цветов клиента (scripts/palette.mjs).
+export type Palette = {
+  accent: string;
+  accentDeep: string;
+  onAccent: string;
+  highlight: string;
+  ink: string;
+  text: string;
+  muted: string;
+  bg: string;
+  grey: string;
+  blob: string;
+};
+
 export type EditProps = {
   width: number;
   height: number;
@@ -47,6 +64,7 @@ export type EditProps = {
   segments: Segment[];
   camera: Camera;
   broll: BRollItem[];
+  overlays?: OverlayItem[];
   titles: TitleItem[];
   cards: CardItem[];
   hook: Hook | null;
@@ -58,4 +76,5 @@ export type EditProps = {
   inset: Inset | null;
   bottomGradient: null | { heightPct: number; opacity: number };
   subtitles: SubtitleStyle;
+  palette: Palette | null;
 };

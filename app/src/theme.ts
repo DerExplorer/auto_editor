@@ -1,17 +1,27 @@
-// Цвета и шрифты из дизайн-системы каруселей: монохром и один янтарный акцент.
+// Цвета и шрифты из дизайн-системы каруселей: монохром и один акцент (по умолчанию янтарь).
+// Палитра клиента ("client" в edit-файле → props.palette, см. scripts/palette.mjs) заменяет эти цвета.
 import { loadFont } from "@remotion/fonts";
-import { staticFile } from "remotion";
+import { getInputProps, staticFile } from "remotion";
+import type { Palette } from "./types";
 
-export const C = {
+const DEFAULT: Palette = {
+  accent: "#FFC163",
+  accentDeep: "#F5A742",
+  onAccent: "#111317", // текст на акценте
+  highlight: "#FFC163", // текущее слово субтитров на видео
   ink: "#111317",
   text: "#2B2D33",
   muted: "#6B6E76",
   bg: "#FAFAFA",
   grey: "#DCDCDC",
   blob: "#E3E3E3",
-  amber: "#FFC163",
-  amberDeep: "#F5A742",
-  paper: "#FAFAFA",
+};
+
+const pal: Palette = { ...DEFAULT, ...(getInputProps() as { palette?: Partial<Palette> }).palette };
+
+export const C = {
+  ...pal,
+  paper: pal.bg,
   shade: (a: number) => `rgba(10,11,13,${a})`,
 };
 

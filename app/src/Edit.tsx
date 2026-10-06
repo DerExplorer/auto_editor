@@ -1,19 +1,19 @@
 import React from "react";
 import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
-import { BottomGradient, BRoll, HookTitle, InsetVideo, QuizCard, setTopPct, TitlePlate } from "./Graphics";
+import { BottomGradient, BRoll, HookTitle, InsetVideo, Overlay, QuizCard, DEFAULT_TOP, setTopPct, TitlePlate } from "./Graphics";
 import { Music, Sfx } from "./Sound";
 import { Subtitles } from "./Subtitles";
 import "./theme";
 import type { EditProps, Span } from "./types";
 import { SegmentView } from "./VideoTrack";
 
-// Слои снизу вверх: видео → b-roll → градиент → рамка → карточки и плашки → хук → субтитры.
+// Слои снизу вверх: видео → b-roll → оверлеи → градиент → рамка → карточки и плашки → хук → субтитры.
 export const Edit: React.FC<EditProps> = (p) => {
   const { fps } = useVideoConfig();
   const f = (ms: number) => Math.round((ms / 1000) * fps);
   const at = (s: Span) => ({ from: f(s.outFromMs), durationInFrames: Math.max(1, f(s.outToMs) - f(s.outFromMs)) });
 
-  setTopPct(p.layout?.topPct ?? 0.05);
+  setTopPct(p.layout?.topPct ?? DEFAULT_TOP);
   const g = p.grade;
   const filter = g ? `saturate(${g.saturate}) contrast(${g.contrast}) brightness(${g.brightness})` : undefined;
   // тон через soft-light: не искажает цвет кожи
@@ -32,6 +32,11 @@ export const Edit: React.FC<EditProps> = (p) => {
       {p.broll.map((b, i) => (
         <Sequence key={`br${i}`} {...at(b)}>
           <BRoll item={b} />
+        </Sequence>
+      ))}
+      {(p.overlays ?? []).map((o, i) => (
+        <Sequence key={`ov${i}`} {...at(o)}>
+          <Overlay item={o} />
         </Sequence>
       ))}
       {p.bottomGradient && <BottomGradient {...p.bottomGradient} />}

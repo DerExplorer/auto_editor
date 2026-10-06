@@ -2,6 +2,7 @@
 //   input/      ← сюда кладутся исходные видео
 //   output/     ← сюда падают готовые ролики
 //   sfx/ music/ reference/ — звуковые эффекты, фоновая музыка, эталонные ролики
+//   clients/    ← паспорта стиля клиентов (docs/style/README.md)
 // Запуск: npm run setup
 // Папки в другом месте: npm run setup -- "/путь/к/папке" — тогда пути запишутся в app/local.json (в git не попадает).
 import fs from "node:fs";
@@ -21,6 +22,7 @@ const output = path.join(base, "output");
 const sfx = path.join(base, "sfx");
 const music = path.join(base, "music");
 const reference = path.join(base, "reference");
+const clients = path.join(base, "clients");
 // Категории звуковых эффектов: на какие события монтажа они ставятся автоматически.
 const SFX_CATEGORIES = {
   whoosh: "вжух — появление рамки с видео, карточки, полноэкранной инфографики, уход рамки",
@@ -29,7 +31,7 @@ const SFX_CATEGORIES = {
   impact: "удар/бум — самое начало ролика вместе с хуком",
 };
 
-for (const d of [input, output, music, reference, ...Object.keys(SFX_CATEGORIES).map((c) => path.join(sfx, c))]) fs.mkdirSync(d, { recursive: true });
+for (const d of [input, output, music, reference, clients, ...Object.keys(SFX_CATEGORIES).map((c) => path.join(sfx, c))]) fs.mkdirSync(d, { recursive: true });
 const sfxReadme = path.join(sfx, "ЧТО СЮДА КЛАСТЬ.txt");
 if (!fs.existsSync(sfxReadme)) {
   fs.writeFileSync(
@@ -69,7 +71,7 @@ if (!fs.existsSync(howto)) {
 const cfgPath = path.join(APP, "local.json");
 const toPosix = (p) => p.split(path.sep).join("/");
 if (base !== ROOT) {
-  const want = { inputDir: input, outputDir: output, sfxDir: sfx, musicDir: music, referenceDir: reference };
+  const want = { inputDir: input, outputDir: output, sfxDir: sfx, musicDir: music, referenceDir: reference, clientsDir: clients };
   const cfg = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, "utf-8")) : {};
   for (const [k, v] of Object.entries(want)) if (force || !cfg[k]) cfg[k] = toPosix(v);
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", "utf-8");
