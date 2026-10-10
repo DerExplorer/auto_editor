@@ -4,9 +4,10 @@
 import { execFileSync, execSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listAudio, normalizeFinal, processVoice, scanLibrary, speechIntervals } from "./audio.mjs";
+import { integratedLufs, listAudio, normalizeFinal, prepareMusic, processVoice, scanLibrary } from "./audio.mjs";
 import { loudness, makeIntensity, planCamera } from "./camera.mjs";
 import { isVideo, makeProxy } from "./media.mjs";
 import { resolveMood } from "./mood.mjs";
@@ -27,6 +28,11 @@ const OUT = dirFrom("AUTO_EDITOR_OUT", localCfg.outputDir, path.join(ROOT, "outp
 const SFX_DIR = dirFrom("AUTO_EDITOR_SFX", localCfg.sfxDir, path.join(ROOT, "sfx"));
 const MUSIC_DIR = dirFrom("AUTO_EDITOR_MUSIC", localCfg.musicDir, path.join(ROOT, "music"));
 const CLIENTS_DIR = dirFrom("AUTO_EDITOR_CLIENTS", localCfg.clientsDir, path.join(ROOT, "clients"));
+
+// Время этапов — в output/<имя>.stats.json рядом с роликом (смотреть в tester/).
+const T0 = Date.now();
+const timing = {};
+const mark = (k, from) => (timing[k] = Date.now() - from);
 
 const CWD = process.cwd();
 process.chdir(APP);
@@ -64,6 +70,9 @@ const probe = (file) => {
 
 // Кэш распознавания — по содержимому файла, чтобы переносился между компьютерами.
 const transcribe = (file) => {
+  // Улучшенная копия (*.ai.mp4) — со звуком оригинала: берём распознавание оригинала, чтобы фразы совпадали
+  const orig = /\.ai\.mp4$/i.test(file) && fs.readdirSync(path.dirname(file)).find((f) => f !== path.basename(file) && f.replace(/\.[^.]+$/, "").toLowerCase() === path.basename(file).replace(/\.ai\.mp4$/i, "").toLowerCase());
+  if (orig) file = path.join(path.dirname(file), orig);
   const st = fs.statSync(file);
   const fd = fs.openSync(file, "r");
   const head = Buffer.alloc(Math.min(st.size, 4 << 20));
@@ -104,16 +113,30 @@ const backgroundOf = (p) => {
 // Remotion берёт файлы только из public/. Видео кладём туда сжатой копией (30 к/с, ≤1080p), остальное — как есть.
 const publish = (file, dir) => {
   const base = path.basename(file).toLowerCase();
-  const src = `${dir}/${isVideo(file) ? base.replace(/\.[^.]+$/, ".mp4") : base}`;
+  // стикеры WebM с прозрачностью — без сжатия в mp4 (прозрачность бы пропала)
+  const proxy = isVideo(file) && !(dir === "stickers" && /\.webm$/i.test(file));
+  const src = `${dir}/${proxy ? base.replace(/\.[^.]+$/, ".mp4") : base}`;
   const dst = path.join("public", src);
   fs.mkdirSync(path.dirname(dst), { recursive: true });
-  if (isVideo(file)) makeProxy(file, dst);
+  if (proxy) makeProxy(file, dst);
   else if (!fs.existsSync(dst) || fs.statSync(dst).size !== fs.statSync(file).size) fs.copyFileSync(file, dst);
   return src;
 };
 
+const tPrep = Date.now();
+// Слабый исходник (меньше 720 по короткой стороне) — только предупреждение: улучшать через ИИ
+// (npm run enhance) можно лишь после согласия пользователя. Улучшенные копии (*.ai.mp4) не проверяем.
+const LOW_RES = 720;
+const checkQuality = (file) => {
+  if (/\.ai(-\d+s)?\.mp4$/i.test(file)) return;
+  const { width, height } = probe(file);
+  if (Math.min(width, height) < LOW_RES)
+    console.log(`  ⚠ низкое разрешение исходника ${path.basename(file)}: ${width}×${height}. Можно улучшить ИИ перед монтажом (спросить пользователя): npm run enhance -- "${path.relative(INPUT, file)}"`);
+};
+
 const clips = edit.inputs.map((input) => {
   const file = findMedia(input);
+  checkQuality(file);
   const src = publish(file, "clips");
   let voiceSrc = null;
   if (edit.audio?.voice !== false) {
@@ -122,6 +145,8 @@ const clips = edit.inputs.map((input) => {
   }
   return { file, src, voiceSrc, ...probe(path.join("public", src)), words: transcribe(file), rms: loudness(file) };
 });
+
+mark("prepareMs", tPrep);
 
 // ---------- привязки к фразам ----------
 
@@ -232,10 +257,9 @@ const subtract = ([S, E], cuts) => {
 };
 
 // Кадр 9:16 по исходнику (если исходник шире — обрезка по бокам).
-const frameSize = ({ width, height }) => {
-  const even = (n) => Math.round(n / 2) * 2;
-  return width / height > 9 / 16 ? { width: even((height * 9) / 16), height } : { width, height: even((width * 16) / 9) };
-};
+// Ролик всегда 1080×1920 (родной размер Reels/TikTok/Shorts), каким бы ни был исходник:
+// видео заполняет кадр, графика рисуется сразу в полном размере и остаётся чёткой.
+const frameSize = () => ({ width: 1080, height: 1920 });
 
 // ---------- сборка ----------
 
@@ -387,6 +411,14 @@ const build = () => {
       fit: b.fit,
     }))
     .filter(valid);
+  // Стикеры: анимированный WebM из library/stickers сбоку от лица на время фразы.
+  const stickers = (edit.stickers ?? [])
+    .map((st) => {
+      const file = findMedia(/\.webm$/i.test(st.src) ? st.src : `${st.src}.webm`);
+      const s = span(st.end == null && st.durationMs == null ? { ...st, durationMs: 1800 } : st);
+      return { ...s, src: publish(file, "stickers"), side: st.side ?? "right", y: st.y ?? 0.4, size: st.size ?? 0.26 };
+    })
+    .filter(valid);
   // Оверлеи: огонь, искры, стекло поверх кадра (режим screen). Путь или "overlays/<тема>".
   const overlays = (edit.overlays ?? [])
     .map((o) => {
@@ -434,22 +466,41 @@ const build = () => {
       }
     : { keys: [], caps: [] };
 
-  // Музыка: "auto" — первый трек из music/<папка настроения>.
+  // Музыка — ровный фон одного уровня: relDb ниже голоса (по умолчанию −14 дБ, как в TEST3.6), без приглушения под речь.
+  // "auto" — самый ровный трек папки настроения (наименьший LRA из music/tracks.json, npm run music-index),
+  // из тех, что не короче ролика.
   let music = null;
   if (edit.music) {
     const m = edit.music === "auto" ? { ...mood?.music, dir: path.join(MUSIC_DIR, mood?.music.dir ?? "") } : typeof edit.music === "string" ? { src: edit.music } : edit.music;
     const mdir = m.dir ? path.resolve(ROOT, m.dir) : MUSIC_DIR;
-    const file = m.src ? [path.join(mdir, m.src), path.resolve(ROOT, m.src)].find((x) => fs.existsSync(x)) : listAudio(mdir)[0];
+    let file = m.src ? [path.join(mdir, m.src), path.join(MUSIC_DIR, m.src), path.resolve(ROOT, m.src)].find((x) => fs.existsSync(x)) : null;
+    if (!m.src) {
+      const indexPath = path.join(MUSIC_DIR, "tracks.json");
+      const index = fs.existsSync(indexPath) ? JSON.parse(fs.readFileSync(indexPath, "utf8")) : {};
+      const dirRel = path.relative(MUSIC_DIR, mdir).split(path.sep).join("/");
+      const ranked = listAudio(mdir)
+        .map((p) => ({ p, t: index[`${dirRel}/${path.basename(p)}`] }))
+        .filter((x) => x.t)
+        .sort((a, b) => (b.t.durationS * 1000 >= durationMs) - (a.t.durationS * 1000 >= durationMs) || a.t.lra - b.t.lra);
+      file = ranked[0]?.p ?? listAudio(mdir)[0];
+      if (!ranked.length) console.log("  ⚠ нет music/tracks.json — трек выбран без учёта ровности (npm run music-index)");
+    }
     if (!file) console.log(`  ⚠ музыка не найдена (${m.src ?? "папка пуста"}, ${mdir})`);
-    else
-      music = {
-        src: publish(file, "music"),
-        volume: m.volume ?? 0.16,
-        duckTo: m.duckTo ?? 0.06,
-        fadeInMs: m.fadeInMs ?? 800,
-        fadeOutMs: m.fadeOutMs ?? 1500,
-        speech: speechIntervals(words),
-      };
+    else {
+      const voiceFile = clips.find((c) => c.voiceSrc)?.voiceSrc;
+      const voiceLufs = voiceFile ? integratedLufs(path.join("public", voiceFile)) : -23;
+      const relDb = m.relDb ?? -14;
+      // уровень в имени: разные уровни одного трека не перетирают друг друга
+      const src = `music/${path.basename(file).toLowerCase().replace(/\.[^.]+$/, "")}.${Math.round(-(voiceLufs + relDb))}.bg.m4a`;
+      fs.mkdirSync(path.join("public", "music"), { recursive: true });
+      prepareMusic(file, path.join("public", src), { lufs: voiceLufs + relDb });
+      // Трек целиком, с начала, без нарезки и без повторов. Если он короче ролика — плавно уходит в конце трека.
+      const trackMs = Math.round(Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path.join("public", src)], { encoding: "utf8" })) * 1000);
+      if (trackMs < durationMs) console.log(`  ⚠ трек короче ролика (${(trackMs / 1000).toFixed(0)} с) — в конце будет тишина; лучше трек длиннее`);
+      // Плавные изменения уровня на моментах: "moments": [{"start": "фраза", "end": "фраза", "db": -6}]
+      const moments = (m.moments ?? []).map((x) => ({ ...span(x), gain: Math.pow(10, (x.db ?? -6) / 20), rampMs: x.rampMs ?? 700 })).filter(valid);
+      music = { src, volume: 1, fadeInMs: m.fadeInMs ?? 2000, fadeOutMs: m.fadeOutMs ?? 2500, endMs: Math.min(durationMs, trackMs), moments, name: path.basename(file) };
+    }
   }
 
   // Звуковые эффекты: авто на события монтажа + ручные на фразы. Варианты из папки чередуются по кругу.
@@ -494,6 +545,7 @@ const build = () => {
       events.push({ at: Math.max(inset.outFromMs, inset.outToMs - 200), cat: "whoosh", vol: 0.6 });
     }
     broll.forEach((b) => events.push({ at: b.outFromMs, cat: b.mode === "full" ? "whoosh" : "click" }));
+    stickers.forEach((st) => events.push({ at: st.outFromMs, cat: "pop" }));
     // оверлей: звук по теме (огонь/искры — impact, стекло — glass), можно задать "sound" или false
     overlays.forEach((o) => {
       if (o.sound === false) return;
@@ -519,7 +571,7 @@ const build = () => {
   }
   console.log(
     `  звук: ${clips.some((c) => c.voiceSrc) ? "срез низов голоса" : "голос как есть"}, эффектов ${sfx.length}` +
-      `${missing.size ? ` (нет в библиотеке: ${[...missing].join(", ")})` : ""}, музыка: ${music ? path.basename(music.src) : "нет"}`,
+      `${missing.size ? ` (нет в библиотеке: ${[...missing].join(", ")})` : ""}, музыка: ${music ? music.name : "нет"}`,
   );
 
   return {
@@ -529,6 +581,7 @@ const build = () => {
     segments: segs,
     broll,
     overlays: overlays.map(({ sound, ...o }) => o),
+    stickers,
     music,
     sfx,
     titles,
@@ -555,7 +608,9 @@ const build = () => {
 fs.mkdirSync(path.join("build", name), { recursive: true });
 fs.mkdirSync(OUT, { recursive: true });
 
+const tBuild = Date.now();
 const props = build();
+mark("buildMs", tBuild);
 const propsPath = path.join("build", name, "9x16.props.json");
 fs.writeFileSync(propsPath, JSON.stringify(props, null, 1), "utf-8");
 const srcMs = clips.reduce((s, c) => s + c.durationMs, 0);
@@ -566,11 +621,35 @@ console.log(
 
 if (doRender) {
   const out = path.join(OUT, `${edit.output ?? name}.mp4`);
+  const tRender = Date.now();
   execSync(`npx --no-install remotion render src/index.ts Edit "${out}" --props="${propsPath}" --log=error`, { stdio: "inherit" });
+  mark("renderMs", tRender);
   if (!fs.existsSync(out)) throw new Error(`Рендер не создал файл: ${out}`);
+  let loudness = null;
   if (edit.audio?.normalize !== false) {
-    const n = normalizeFinal(out, { lufs: edit.audio?.lufs ?? -14 });
-    console.log(`  громкость: ${n.before.toFixed(1)} → ${n.after.toFixed(1)} LUFS`);
+    const tNorm = Date.now();
+    loudness = normalizeFinal(out, { lufs: edit.audio?.lufs ?? -14 });
+    mark("normalizeMs", tNorm);
+    console.log(`  громкость: ${loudness.before.toFixed(1)} → ${loudness.after.toFixed(1)} LUFS`);
   }
+  mark("totalMs", T0);
+  const md = resolveMood(edit.mood);
+  const stats = {
+    name: edit.output ?? name,
+    edit: path.relative(APP, path.resolve(CWD, editPath)).split(path.sep).join("/"),
+    renderedAt: new Date().toISOString(),
+    host: { cpus: os.cpus().length, platform: process.platform },
+    timing,
+    video: { width: props.width, height: props.height, durationMs: props.durationMs, sourceMs: srcMs, sizeBytes: fs.statSync(out).size },
+    audio: { loudness, music: props.music ? { track: props.music.name, relDb: edit.music?.relDb ?? md?.music?.relDb ?? -14 } : null, sfx: props.sfx.length },
+    mood: md ? `${md.label} ${md.strength}/5` : null,
+    elements: {
+      segments: props.segments.length, cards: props.cards.length, titles: props.titles.length, broll: props.broll.length,
+      overlays: props.overlays?.length ?? 0, stickers: props.stickers?.length ?? 0, subtitleBlocks: props.subtitles.blocks.length,
+      cameraMoves: props.camera.keys.length - 1, hook: !!props.hook, inset: !!props.inset,
+    },
+  };
+  fs.writeFileSync(out.replace(/.mp4$/i, ".stats.json"), JSON.stringify(stats, null, 1));
+  console.log(`  время: подготовка ${(timing.prepareMs / 1000).toFixed(0)} с, рендер ${(timing.renderMs / 1000).toFixed(0)} с, всего ${(timing.totalMs / 1000).toFixed(0)} с`);
   console.log(`  → ${out}`);
 }

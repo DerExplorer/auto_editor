@@ -50,3 +50,10 @@ app/local.json
 ПЛАН РАЗВИТИЯ.md
 /SSounds/
 /library/
+/tools/
+# Копии из library/ и подготовленная музыка (собираются при сборке)
+app/public/music/
+app/public/stickers/
+app/public/phone/
+# Тестовые варианты edit-файлов (TEST3.x) — основной тест в app/edits/test.json
+app/edits/test3_*

@@ -45,9 +45,7 @@
   ],
   "music": {
     "src": "test-pad.mp3",
-    "dir": "app/samples/music",
-    "volume": 0.2,
-    "duckTo": 0.06
+    "dir": "app/samples/music"
   },
   "sfx": {
     "dir": "app/samples/sfx"

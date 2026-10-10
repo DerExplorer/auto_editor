@@ -2,7 +2,7 @@ import React from "react";
 import { AbsoluteFill, Easing, Img, interpolate, Loop, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { SOFT_TEXT_SHADOW } from "./Subtitles";
 import { C, FONT_HEAD, FONT_TEXT } from "./theme";
-import type { BRollContent, BRollItem, CardItem, Hook, Inset, OverlayItem, TitleItem } from "./types";
+import type { BRollContent, BRollItem, CardItem, Hook, Inset, OverlayItem, StickerItem, TitleItem } from "./types";
 
 // Безопасные зоны (доли кадра), разметка — docs/safe-zones: по бокам 70 px, сверху и снизу по 250 px.
 export const SAFE = { top: 250 / 1920, side: 70 / 1080, bottom: 250 / 1920 };
@@ -445,5 +445,31 @@ export const Overlay: React.FC<{ item: OverlayItem }> = ({ item }) => {
     <AbsoluteFill style={{ mixBlendMode: "screen", opacity: o, pointerEvents: "none" }}>
       <OffthreadVideo src={staticFile(item.src)} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
     </AbsoluteFill>
+  );
+};
+
+// ---------- Стикер ----------
+
+// Анимированный стикер сбоку от лица: выпрыгивает с лёгким наклоном и плавно уходит.
+export const Sticker: React.FC<{ item: StickerItem }> = ({ item }) => {
+  const { width, height } = useVideoConfig();
+  const { enter, exit } = useInOut(item.outToMs - item.outFromMs, 5);
+  const size = width * item.size;
+  const s = Math.min(enter, 1) * exit;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: height * item.y - size / 2,
+        [item.side]: SIDE,
+        width: size,
+        height: size,
+        transform: `scale(${0.4 + 0.6 * s}) rotate(${(item.side === "left" ? -1 : 1) * (8 - 8 * Math.min(enter, 1))}deg)`,
+        opacity: Math.min(1, s * 1.5),
+        filter: "drop-shadow(0 12px 28px rgba(0,0,0,0.35))",
+      }}
+    >
+      <OffthreadVideo src={staticFile(item.src)} muted transparent style={{ width: "100%", height: "100%" }} />
+    </div>
   );
 };

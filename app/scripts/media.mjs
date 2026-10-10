@@ -8,10 +8,12 @@ export const isVideo = (file) => VIDEO.test(file);
 
 export const makeProxy = (file, out) => {
   const stamp = `${out}.json`;
-  const key = JSON.stringify({ size: fs.statSync(file).size, mtime: Math.round(fs.statSync(file).mtimeMs), v: 1 });
+  const key = JSON.stringify({ size: fs.statSync(file).size, mtime: Math.round(fs.statSync(file).mtimeMs), v: 2 });
   if (fs.existsSync(out) && fs.existsSync(stamp) && fs.readFileSync(stamp, "utf-8") === key) return out;
-  console.log(`  сжатие ${file} → 30 к/с, ≤1080p...`);
-  const scale = "scale='if(gt(iw,ih),min(1920,iw),min(1080,iw))':-2:flags=lanczos";
+  console.log(`  копия ${file} → 30 к/с, вертикальные 1080 по ширине...`);
+  // Вертикальные — всегда 1080 по ширине: большие уменьшаются, маленькие (720) увеличиваются lanczos —
+  // это чище, чем растяжение в браузере при рендере. Горизонтальные — не больше 1920.
+  const scale = "scale='if(gt(iw,ih),min(1920,iw),1080)':-2:flags=lanczos";
   execFileSync("ffmpeg", [
     "-v", "error", "-y", "-i", file,
     "-vf", `${scale},fps=30`,

@@ -15,7 +15,9 @@
     "movies": "node scripts/movies.mjs",
     "palette": "node scripts/palette.mjs",
     "typecheck": "tsc -p .",
-    "test": "npm run typecheck && node scripts/smoke-test.mjs"
+    "test": "npm run typecheck && node scripts/smoke-test.mjs",
+    "music-index": "node scripts/music.mjs",
+    "enhance": "node scripts/enhance.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.528",

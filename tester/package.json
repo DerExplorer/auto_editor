@@ -1,0 +1,13 @@
+{
+  "name": "auto-editor-tester",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Локальная страница для сравнения тестовых роликов монтажёра",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

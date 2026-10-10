@@ -33,7 +33,7 @@ const checks = [
   ["хук, плашка и инфографика на месте", !!props.hook && props.titles.length === 1 && props.broll.length === 1],
   ["голос: только срез низов (по умолчанию)", props.segments.every((s) => s.voiceSrc && fs.existsSync(path.join(APP, "public", s.voiceSrc)))],
   ["звуковые эффекты расставлены", props.sfx.length >= 3],
-  ["фоновая музыка с приглушением под голос", !!props.music && props.music.speech.length > 0],
+  ["фоновая музыка ровным фоном (выровнена, без приглушения)", !!props.music && props.music.src.endsWith(".bg.m4a")],
   [`громкость ≈ −14 LUFS (${(lufs = integratedLufs(out)).toFixed(1)})`, Math.abs(lufs + 14) <= 1],
 ];
 let ok = true;

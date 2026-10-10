@@ -1,13 +1,13 @@
 import React from "react";
 import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
-import { BottomGradient, BRoll, HookTitle, InsetVideo, Overlay, QuizCard, DEFAULT_TOP, setTopPct, TitlePlate } from "./Graphics";
+import { BottomGradient, BRoll, HookTitle, InsetVideo, Overlay, QuizCard, Sticker, DEFAULT_TOP, setTopPct, TitlePlate } from "./Graphics";
 import { Music, Sfx } from "./Sound";
 import { Subtitles } from "./Subtitles";
 import "./theme";
 import type { EditProps, Span } from "./types";
 import { SegmentView } from "./VideoTrack";
 
-// Слои снизу вверх: видео → b-roll → оверлеи → градиент → рамка → карточки и плашки → хук → субтитры.
+// Слои снизу вверх: видео → b-roll → оверлеи → градиент → рамка → карточки и плашки → стикеры → хук → субтитры.
 export const Edit: React.FC<EditProps> = (p) => {
   const { fps } = useVideoConfig();
   const f = (ms: number) => Math.round((ms / 1000) * fps);
@@ -53,6 +53,11 @@ export const Edit: React.FC<EditProps> = (p) => {
       {p.titles.map((t, i) => (
         <Sequence key={`title${i}`} {...at(t)}>
           <TitlePlate item={t} />
+        </Sequence>
+      ))}
+      {(p.stickers ?? []).map((st, i) => (
+        <Sequence key={`st${i}`} {...at(st)}>
+          <Sticker item={st} />
         </Sequence>
       ))}
       {p.hook && (

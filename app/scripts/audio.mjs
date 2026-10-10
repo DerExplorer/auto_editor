@@ -26,6 +26,18 @@ export const processVoice = (file, outWav, { highpassHz = 80 } = {}) => {
   return outWav;
 };
 
+// Музыка фоном: выровнять внутри трека (мягкий компрессор + динамическая нормализация), чтобы не было
+// громких и тихих мест, и привести к заданной громкости. Под голос не приглушается — уровень один на весь ролик.
+export const prepareMusic = (file, out, { lufs }) => {
+  const stamp = `${out}.json`;
+  const key = JSON.stringify({ src: path.basename(file), size: fs.statSync(file).size, lufs, v: 1 });
+  if (fs.existsSync(out) && fs.existsSync(stamp) && fs.readFileSync(stamp, "utf-8") === key) return out;
+  const af = `acompressor=threshold=-26dB:ratio=3:attack=80:release=600:makeup=1,loudnorm=I=${lufs.toFixed(1)}:LRA=4:TP=-3`;
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", file, "-vn", "-af", af, "-ar", "48000", "-ac", "2", "-c:a", "aac", "-b:a", "192k", out]);
+  fs.writeFileSync(stamp, key);
+  return out;
+};
+
 // Громкость готового ролика до −14 LUFS (Reels/TikTok): подъём уровня, ограничитель на редкие пики,
 // точная линейная подгонка. Видео не перекодируется.
 export const normalizeFinal = (mp4, { lufs = -14, tp = -1 } = {}) => {
@@ -52,16 +64,4 @@ export const scanLibrary = (dir) => {
     if (files.length) lib[cat.toLowerCase()] = files;
   }
   return lib;
-};
-export const listAudio = (dir) => (dir && fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => AUDIO.test(f)).sort().map((f) => path.join(dir, f)) : []);
-
-// Интервалы речи для приглушения музыки под голос.
-export const speechIntervals = (words, gapMs = 450) => {
-  const out = [];
-  for (const w of [...words].sort((a, b) => a.startMs - b.startMs)) {
-    const last = out[out.length - 1];
-    if (last && w.startMs - last[1] < gapMs) last[1] = Math.max(last[1], w.endMs);
-    else out.push([w.startMs, w.endMs]);
-  }
-  return out;
-};
+};export const listAudio = (dir) => (dir && fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => AUDIO.test(f)).sort().map((f) => path.join(dir, f)) : []);

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tester",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tester/server.mjs"],
+      "port": 8765
+    }
+  ]
+}

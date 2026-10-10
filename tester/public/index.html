@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тестер роликов</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <button class="on" data-tab="tests">Тесты</button>
+  <button data-tab="plan">План: что есть и что добавить</button>
+</nav>
+
+<section class="tab active" id="tab-tests">
+  <header>
+    <div class="row">
+      <button id="play" title="Пробел">▶ Играть все</button>
+      <button data-jump="-5" title="←">−5 с</button>
+      <button data-jump="5" title="→">+5 с</button>
+      <button data-frame="-1" title=",">‹ кадр</button>
+      <button data-frame="1" title=".">кадр ›</button>
+      <select id="speed" title="Скорость">
+        <option value="0.5">0,5×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.5">1,5×</option>
+        <option value="2">2×</option>
+      </select>
+    </div>
+    <div class="row seekrow">
+      <input id="seek" type="range" min="0" max="80" step="0.01" value="0">
+      <span id="time">0:00 / 0:00</span>
+    </div>
+    <div class="row" id="filters"></div>
+  </header>
+  <p class="hint">Все ролики идут синхронно. Звук — у того, что в янтарной рамке: клик по ролику переключает звук. Кнопки с названиями показывают и скрывают версии. «Подробнее» под роликом — время сборки и замеры. Клавиши: пробел — пауза, ← → — 5 с, , . — кадр.</p>
+  <div class="grid" id="grid"></div>
+  <p class="empty" id="empty" hidden>Тестов пока нет — список берётся из <code>output/tests.json</code>.</p>
+</section>
+
+<section class="tab" id="tab-plan">
+  <div class="plan">
+    <div class="col"><h2>Следует добавить <span id="todo-n"></span></h2><div id="todo"></div></div>
+    <div class="col"><h2>Уже добавили <span id="done-n"></span></h2><div id="done"></div></div>
+  </div>
+</section>
+
+<template id="cell-tpl">
+  <article class="cell">
+    <div class="media"><video preload="metadata" playsinline muted></video><div class="missing" hidden>файла нет</div></div>
+    <div class="name"><span class="title"></span><small class="badge"></small></div>
+    <p class="desc"></p>
+    <p class="check"></p>
+    <button class="more" type="button">Подробнее ▾</button>
+    <div class="stats" hidden></div>
+  </article>
+</template>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -25,6 +25,8 @@ export type BRollContent =
 export type BRollItem = Span & { mode: "full" | "pip"; content: BRollContent; bg?: { src: string; kind: "video" | "image"; durationMs?: number }; fit?: "cover" | "contain" };
 // Оверлей поверх кадра, режим screen: чёрное прозрачно (огонь, искры, стекло)
 export type OverlayItem = Span & { src: string; opacity: number };
+// Стикер сбоку от лица: y — центр по высоте (доля кадра), size — ширина (доля кадра)
+export type StickerItem = Span & { src: string; side: "left" | "right"; y: number; size: number };
 
 export type TitleItem = Span & { text: string; position: "top" | "center"; topPct?: number };
 export type CardItem = Span & { title: string; question: string; options: string[]; answer?: number; answerOutMs?: number };
@@ -65,13 +67,14 @@ export type EditProps = {
   camera: Camera;
   broll: BRollItem[];
   overlays?: OverlayItem[];
+  stickers?: StickerItem[];
   titles: TitleItem[];
   cards: CardItem[];
   hook: Hook | null;
   // цветокоррекция настроения; warmth > 0 теплее, < 0 холоднее
   grade: null | { saturate: number; contrast: number; brightness: number; warmth: number };
   layout: { topPct: number };
-  music: null | { src: string; volume: number; duckTo: number; fadeInMs: number; fadeOutMs: number; speech: [number, number][] };
+  music: null | { src: string; volume: number; fadeInMs: number; fadeOutMs: number; endMs?: number; moments?: (Span & { gain: number; rampMs: number })[]; name?: string };
   sfx: { src: string; atMs: number; volume: number }[];
   inset: Inset | null;
   bottomGradient: null | { heightPct: number; opacity: number };

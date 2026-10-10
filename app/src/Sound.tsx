@@ -2,28 +2,24 @@ import React from "react";
 import { Html5Audio, Sequence, staticFile, useVideoConfig } from "remotion";
 import type { EditProps } from "./types";
 
-// Музыка приглушается под голос и плавно появляется и уходит по краям ролика.
+// Музыка — ровный фон одного уровня (трек заранее выровнен в scripts/audio.mjs). Трек идёт целиком с начала,
+// без нарезки и повторов; громкость меняется только плавно: края ролика и отмеченные моменты (moments).
 export const Music: React.FC<{ music: NonNullable<EditProps["music"]>; durationMs: number }> = ({ music, durationMs }) => {
   const { fps } = useVideoConfig();
-  const RAMP = 250;
-  const duckAt = (ms: number) => {
-    let dist = Infinity;
-    for (const [a, b] of music.speech) {
-      if (ms >= a - 150 && ms <= b + 150) return 0;
-      dist = Math.min(dist, Math.abs(ms - a), Math.abs(ms - b));
-      if (a > ms + RAMP) break;
-    }
-    return Math.min(1, dist / RAMP);
-  };
+  const end = music.endMs ?? durationMs;
+  // косинусная кривая — без заметной «ступеньки» в начале и конце перехода
+  const smooth = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * Math.max(0, Math.min(1, x)));
   return (
     <Html5Audio
       src={staticFile(music.src)}
-      loop
       volume={(frame) => {
         const ms = (frame / fps) * 1000;
-        const fade = Math.min(1, ms / music.fadeInMs, (durationMs - ms) / music.fadeOutMs);
-        const open = duckAt(ms);
-        return Math.max(0, fade) * (music.duckTo + (music.volume - music.duckTo) * open);
+        let v = smooth(ms / music.fadeInMs) * smooth((end - ms) / music.fadeOutMs);
+        for (const m of music.moments ?? []) {
+          const into = smooth((ms - m.outFromMs) / m.rampMs) * smooth((m.outToMs - ms) / m.rampMs);
+          v *= 1 + (m.gain - 1) * into;
+        }
+        return v * music.volume;
       }}
     />
   );
