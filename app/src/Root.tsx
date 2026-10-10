@@ -3,7 +3,8 @@ import { Composition } from "remotion";
 import { Edit } from "./Edit";
 import { DEFAULT_TOP } from "./Graphics";
 import type { EditProps } from "./types";
-import { PHONE_DURATION, PHONE_DYN_DURATION, PHONE_FPS, PhoneDemo, PhoneDemoDynamic } from "./PhoneDemo";
+import { GDP_DURATION, GDP_FPS, GdpDemo } from "./GdpDemo";
+import { PHONE_DURATION, PHONE_DYN_DURATION, PHONE_FPS, PHONE_FX_DURATION, PhoneDemo, PhoneDemoDynamic, PhoneDemoFx } from "./PhoneDemo";
 
 const FPS = 30;
 
@@ -54,6 +55,22 @@ export const Root: React.FC = () => (
     width={1080}
     height={1920}
     durationInFrames={Math.round(PHONE_DYN_DURATION * PHONE_FPS)}
+  />
+  <Composition
+    id="PhoneDemoFx"
+    component={PhoneDemoFx}
+    fps={PHONE_FPS}
+    width={1080}
+    height={1920}
+    durationInFrames={Math.round(PHONE_FX_DURATION * PHONE_FPS)}
+  />
+  <Composition
+    id="GdpDemo"
+    component={GdpDemo}
+    fps={GDP_FPS}
+    width={1080}
+    height={1920}
+    durationInFrames={Math.round(GDP_DURATION * GDP_FPS)}
   />
   <Composition
     id="Edit"

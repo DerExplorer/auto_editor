@@ -1,7 +1,6 @@
-// Анимация с айфоном из деталей: рамка, домашний экран, приложения, палец, жесты.
-// Сценарий — шаги (tap / toggle / home / swipe) со временем нажатия от начала сцены; собирает их scripts/build.mjs
-// из "phone" в edit-файле. Интерфейс рисуется в точках iPhone (393×852). Детально — только Настройки и Spotify,
-// остальные приложения — простые экраны-заглушки (правило минимализма в CLAUDE.md).
+// Айфон из деталей: рамка, домашний экран, приложения, палец, жесты, камера, эффекты.
+// Сценарий — шаги (tap / toggle / home / swipe) со временем нажатия от начала сцены (образцы — PhoneDemo.tsx).
+// Интерфейс рисуется в точках iPhone (393×852). Детально — Настройки и Spotify, остальное — экраны-заглушки.
 import React from "react";
 import { loadFont } from "@remotion/fonts";
 import {
@@ -10,6 +9,7 @@ import {
   Img,
   Loop,
   OffthreadVideo,
+  Sequence,
   interpolate,
   interpolateColors,
   spring,
@@ -17,6 +17,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { clamp, lerp, prog, smoothAt } from "./anim";
 
 // ---------- типы ----------
 export type PhoneStep =
@@ -45,6 +46,16 @@ export type PhoneScene = {
   medium?: boolean; // середина: готовые иконки в верхних рядах, доке и на экране логотипов, остальное — заглушки
   dynamic?: boolean; // «живость»: телефон дышит, пружинное открытие, поп самолётика, свечение тумблера, размытие свайпа
   camera?: CamKey[]; // ключи камеры; без них — камера стоит (кроме zoom на тумблере)
+  effects?: PhoneEffects;
+};
+
+// Эффекты поверх динамики: засветки (файлы из library/transitions, режим screen), блик по стеклу,
+// цвет фонового свечения по времени, отражение телефона «на полу».
+export type PhoneEffects = {
+  leaks?: { atMs: number; src: string; durationMs: number; opacity?: number }[];
+  glare?: number[]; // моменты, когда по стеклу пробегает блик
+  glow?: { atMs: number; color: string }[]; // цвет свечения за телефоном (rgba), меняется плавно
+  reflection?: boolean;
 };
 
 // Ключ камеры: в момент atMs точка (x, y) экрана телефона (в точках iPhone) — в центре телефона на кадре,
@@ -75,12 +86,8 @@ const ensureFonts = () => {
 const SF = '"SF Pro Text", "Inter", Arial, sans-serif';
 
 // ---------- помощники ----------
-const EASE = Easing.bezier(0.25, 0.1, 0.25, 1);
-const APP = Easing.bezier(0.2, 0.85, 0.25, 1);
-const DRAG = Easing.bezier(0.45, 0, 0.25, 1);
-const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
-const prog = (t: number, start: number, dur: number, e = EASE) => interpolate(t, [start, start + dur], [0, 1], { ...clamp, easing: e });
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const APP = Easing.bezier(0.2, 0.85, 0.25, 1); // открытие приложения
+const DRAG = Easing.bezier(0.45, 0, 0.25, 1); // свайп пальцем
 const abs: React.CSSProperties = { position: "absolute" };
 const centerFlex: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "center" };
 
@@ -737,7 +744,7 @@ export const PhoneSceneView: React.FC<PhoneScene> = (s) => {
     const close = steps.slice(i + 1).find((x) => x.kind === "home");
     // dynamic: открытие пружиной с лёгким перелётом, как в iOS
     const opened = s.dynamic
-      ? spring({ frame: Math.max(0, ((t - st.atMs - OPEN_DELAY) / 1000) * fps), fps, config: { damping: 16, stiffness: 190, mass: 0.8 } })
+      ? spring({ frame: Math.max(0, ((t - st.atMs - OPEN_DELAY) / 1000) * fps), fps, config: { damping: 17, stiffness: 220, mass: 0.75 } })
       : prog(t, st.atMs + OPEN_DELAY, OPEN_MS, APP);
     const p = opened - (close ? prog(t, close.atMs + 150, CLOSE_MS, APP) : 0);
     return [{ app: st.app, open: st.atMs + OPEN_DELAY, p, icon: locate(st.app) }];
@@ -819,29 +826,43 @@ export const PhoneSceneView: React.FC<PhoneScene> = (s) => {
   const bgOp = s.enter === false ? 1 : Math.min(prog(t, 0, 250), 1 - prog(t, s.durationMs - 300, 300));
   const darkBar = top ? top.app !== "spotify" : false;
 
-  // камера по ключам: точка (x, y) экрана переезжает в центр телефона, приближение и наклон — плавно между ключами
-  type Cam = { atMs: number; zoom: number; x: number; y: number; rx: number; ry: number };
-  let cam: Cam = { atMs: 0, zoom, x: SW / 2, y: zoomY, rx: 0, ry: 0 };
+  // эффекты: цвет свечения за телефоном плавно переходит между ключами
+  const fx = s.effects ?? {};
+  let glow = "rgba(255,193,99,0.30)";
+  for (const [i, g] of (fx.glow ?? []).entries()) {
+    if (t < g.atMs) break;
+    const prev = i > 0 ? fx.glow![i - 1].color : glow;
+    glow = interpolateColors(prog(t, g.atMs, 600), [0, 1], [prev, g.color]);
+  }
+
+  // Камера по ключам. Кадр = scale(z) + сдвиг t, где t = C − z·F (F — точка экрана, C — центр телефона на кадре).
+  // Сдвиг и приближение интерполируются вместе — цель наезда идёт к центру по прямой, без «ухода вверх» перед наездом.
+  // Кривая через все ключи сразу (монотонный кубический сплайн): скорость не обрывается на ключах, нет выбросов.
+  const C = { x: width / 2, y: PY + H / 2 };
+  const toComp = (x: number, y: number) => ({ x: PX + (SCREEN.x + SCREEN.k * x) * S, y: PY + (SCREEN.y + SCREEN.k * y) * S });
+  let cam = { z: zoom, tx: 0, ty: 0, rx: 0, ry: 0 };
   if (s.camera?.length) {
-    const keys: Cam[] = [];
-    let prev = { ...cam, zoom: 1, y: SH / 2 };
-    for (const k of [...s.camera].sort((a, b) => a.atMs - b.atMs)) keys.push((prev = { ...prev, ...k }));
-    const i = keys.findIndex((k) => k.atMs > t);
-    if (i === 0) cam = keys[0];
-    else if (i < 0) cam = keys[keys.length - 1];
-    else {
-      const a = keys[i - 1];
-      const b = keys[i];
-      const e = Easing.inOut(Easing.cubic)((t - a.atMs) / (b.atMs - a.atMs));
-      cam = { atMs: t, zoom: a.zoom * Math.pow(b.zoom / a.zoom, e), x: lerp(a.x, b.x, e), y: lerp(a.y, b.y, e), rx: lerp(a.rx, b.rx, e), ry: lerp(a.ry, b.ry, e) };
-    }
+    type Key = { atMs: number; zoom: number; x: number; y: number; rx: number; ry: number };
+    const keys: Key[] = [];
+    let prev: Key = { atMs: 0, zoom: 1, x: SW / 2, y: SH / 2, rx: 0, ry: 0 };
+    for (const k of [...s.camera].sort((p1, p2) => p1.atMs - p2.atMs)) keys.push((prev = { ...prev, ...k }));
+    const xs = keys.map((k) => k.atMs);
+    const ch = (f: (k: Key) => number) => smoothAt(xs, keys.map(f), t);
+    const lz = ch((k) => Math.log(k.zoom));
+    cam = {
+      z: Math.exp(lz),
+      tx: ch((k) => C.x - k.zoom * toComp(k.x, k.y).x),
+      ty: ch((k) => C.y - k.zoom * toComp(k.x, k.y).y),
+      rx: ch((k) => k.rx),
+      ry: ch((k) => k.ry),
+    };
+  } else {
+    // без ключей: приближение вокруг точки тумблера, точка остаётся на месте
+    const F = toComp(SW / 2, zoomY);
+    cam = { z: zoom, tx: F.x * (1 - zoom), ty: F.y * (1 - zoom), rx: 0, ry: 0 };
   }
   // dynamic: телефон слегка «дышит» — покачивание и наклон
   const sway = s.dynamic ? { rx: 1.5 * Math.sin(t / 1700 + 1), ry: 2.5 * Math.sin(t / 1300), y: 6 * Math.sin(t / 1100) } : { rx: 0, ry: 0, y: 0 };
-  const C = { x: width / 2, y: PY + H / 2 };
-  const F = { x: PX + (SCREEN.x + SCREEN.k * cam.x) * S, y: PY + (SCREEN.y + SCREEN.k * cam.y) * S };
-  const shift = s.camera?.length ? { x: C.x - F.x, y: C.y - F.y } : { x: 0, y: 0 };
-
   const appScreen = (w: (typeof windows)[number]) =>
     w.app === "settings" ? (
       <SettingsApp groups={groups} toggleAt={toggleAt} minimal={s.minimal} medium={s.medium} keep={keepRows} glowAt={glowAt} />
@@ -866,21 +887,16 @@ export const PhoneSceneView: React.FC<PhoneScene> = (s) => {
           )
         ) : (
           <AbsoluteFill style={{ background: "#FAFAFA" }}>
-            <AbsoluteFill style={{ background: "radial-gradient(circle at 50% 42%, rgba(255,193,99,0.30), rgba(255,193,99,0) 55%)" }} />
+            <AbsoluteFill style={{ background: `radial-gradient(circle at 50% 42%, ${glow}, rgba(255,255,255,0) 58%)` }} />
           </AbsoluteFill>
         )}
       </AbsoluteFill>
-      <AbsoluteFill style={{ perspective: 2600, perspectiveOrigin: `${C.x}px ${C.y}px` }}>
-      <AbsoluteFill
-        style={{
-          transformOrigin: `${F.x}px ${F.y}px`,
-          transform: `translate(${shift.x}px, ${shift.y + sway.y}px) scale(${cam.zoom}) rotateX(${cam.rx + sway.rx}deg) rotateY(${cam.ry + sway.ry}deg)`,
-        }}
-      >
+      <AbsoluteFill style={{ transformOrigin: "0 0", transform: `translate(${cam.tx}px, ${cam.ty + sway.y}px) scale(${cam.z})` }}>
       <div
         style={{
           ...abs, left: PX, top: PY, width: PW, height: H,
-          transform: `translateY(${(1 - enter + exit) * height * 0.8}px) rotate(${(1 - enter) * 14}deg)`,
+          // наклон — вокруг центра самого телефона
+          transform: `translateY(${(1 - enter + exit) * height * 0.8}px) perspective(2600px) rotateX(${cam.rx + sway.rx}deg) rotateY(${cam.ry + sway.ry}deg) rotate(${(1 - enter) * 14}deg)`,
         }}
       >
         <div style={{ ...abs, left: 0, top: 0, width: FRAME_W, height: FRAME_H, transform: `scale(${S})`, transformOrigin: "0 0" }}>
@@ -893,16 +909,35 @@ export const PhoneSceneView: React.FC<PhoneScene> = (s) => {
               </AppWindow>
             ))}
             <StatusBar dark={darkBar} airplane={air} pop={pop} />
+            {(fx.glare ?? []).map((g) => {
+              const q = prog(t, g, 650, Easing.inOut(Easing.quad));
+              return q > 0 && q < 1 ? (
+                <div key={g} style={{ ...abs, top: -200, left: lerp(-260, SW + 60, q), width: 150, height: SH + 400, transform: "rotate(22deg)", background: "linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.32), rgba(255,255,255,0))" }} />
+              ) : null;
+            })}
             <div style={{ ...abs, left: (SW - 134) / 2, bottom: 8, width: 134, height: 5, borderRadius: 3, background: darkBar ? "#000" : "#fff" }} />
           </div>
           <Img src={staticFile(s.frameSrc ?? "phone/frame.png")} style={{ ...abs, left: 0, top: 0, width: FRAME_W, height: FRAME_H }} />
           <div style={{ ...abs, left: SCREEN.x, top: SCREEN.y, width: SW, height: SH, transform: `scale(${SCREEN.k})`, transformOrigin: "0 0" }}>
             <Finger t={t} touches={touches} />
           </div>
+          {fx.reflection && (
+            // отражение «на полу»: зеркалим только корпус с тёмным экраном — дёшево, всю сцену заново не рисуем
+            <div style={{ ...abs, left: 0, top: FRAME_H + 24, width: FRAME_W, height: FRAME_H, transform: "scaleY(-1)", opacity: 0.2, WebkitMaskImage: "linear-gradient(to top, #000, rgba(0,0,0,0) 24%)" }}>
+              <div style={{ ...abs, left: SCREEN.x, top: SCREEN.y, width: SW * SCREEN.k, height: SH * SCREEN.k, borderRadius: 110, background: darkBar || top ? "#1C1C1E" : "linear-gradient(165deg, #6B3FA0, #D9467F)" }} />
+              <Img src={staticFile(s.frameSrc ?? "phone/frame.png")} style={{ ...abs, left: 0, top: 0, width: FRAME_W, height: FRAME_H }} />
+            </div>
+          )}
         </div>
       </div>
       </AbsoluteFill>
-      </AbsoluteFill>
+      {(fx.leaks ?? []).map((l, i) => (
+        <Sequence key={i} from={Math.round((l.atMs / 1000) * fps)} durationInFrames={Math.round((l.durationMs / 1000) * fps)} layout="none">
+          <AbsoluteFill style={{ mixBlendMode: "screen", opacity: l.opacity ?? 0.8 }}>
+            <OffthreadVideo src={staticFile(l.src)} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </AbsoluteFill>
+        </Sequence>
+      ))}
     </AbsoluteFill>
   );
 };

@@ -55,5 +55,6 @@ app/local.json
 app/public/music/
 app/public/stickers/
 app/public/phone/
+app/public/gdp/
 # Тестовые варианты edit-файлов (TEST3.x) — основной тест в app/edits/test.json
 app/edits/test3_*
