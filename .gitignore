@@ -58,3 +58,7 @@ app/public/phone/
 app/public/gdp/
 # Тестовые варианты edit-файлов (TEST3.x) — основной тест в app/edits/test.json
 app/edits/test3_*
+/training/
+# Монтаж роликов клиентов (текст их речи в .subs.txt) — только локально; копии шрифтов клиента собираются при сборке
+app/edits/alex_*
+app/public/fonts/client/

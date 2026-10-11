@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
-import { BottomGradient, BRoll, HookTitle, InsetVideo, Overlay, QuizCard, Sticker, DEFAULT_TOP, setTopPct, TitlePlate } from "./Graphics";
+import { BottomGradient, BRoll, ClientTitle, HookTitle, InsetVideo, Overlay, QuizCard, Sticker, DEFAULT_TOP, setTopPct, TitlePlate } from "./Graphics";
 import { Music, Sfx } from "./Sound";
 import { Subtitles } from "./Subtitles";
 import "./theme";
@@ -8,7 +8,25 @@ import type { EditProps, Span } from "./types";
 import { SegmentView } from "./VideoTrack";
 
 // Слои снизу вверх: видео → b-roll → оверлеи → градиент → рамка → карточки и плашки → стикеры → хук → субтитры.
+// debug (проверка лица, scripts/facecheck.mjs): "clean" — только видео и то, что его заменяет (полноэкранный b-roll);
+// "mask" — только то, что может закрыть лицо (текст, плашки, стикеры, рамка), белым на чёрном.
 export const Edit: React.FC<EditProps> = (p) => {
+  if (p.debug === "mask") {
+    return (
+      <AbsoluteFill style={{ backgroundColor: "black" }}>
+        <AbsoluteFill style={{ filter: "brightness(0) invert(1)" }}>
+          <Layers bg="transparent" p={{ ...p, segments: [], broll: p.broll.filter((b) => b.mode === "pip"), overlays: [], bottomGradient: null, music: null, sfx: [] }} />
+        </AbsoluteFill>
+      </AbsoluteFill>
+    );
+  }
+  if (p.debug === "clean") {
+    return <Layers p={{ ...p, broll: p.broll.filter((b) => b.mode === "full"), bottomGradient: null, inset: null, cards: [], titles: [], stickers: [], hook: null, music: null, sfx: [], subtitles: { ...p.subtitles, blocks: [] } }} />;
+  }
+  return <Layers p={p} />;
+};
+
+const Layers: React.FC<{ p: EditProps; bg?: string }> = ({ p, bg = "black" }) => {
   const { fps } = useVideoConfig();
   const f = (ms: number) => Math.round((ms / 1000) * fps);
   const at = (s: Span) => ({ from: f(s.outFromMs), durationInFrames: Math.max(1, f(s.outToMs) - f(s.outFromMs)) });
@@ -20,11 +38,11 @@ export const Edit: React.FC<EditProps> = (p) => {
   const tint = g && Math.abs(g.warmth) > 0.01 ? (g.warmth > 0 ? `rgba(255,160,70,${g.warmth * 0.35})` : `rgba(70,110,170,${-g.warmth * 0.35})`) : null;
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "black" }}>
+    <AbsoluteFill style={{ backgroundColor: bg }}>
       <AbsoluteFill style={{ filter }}>
         {p.segments.map((s, i) => (
           <Sequence key={`seg${i}`} {...at(s)}>
-            <SegmentView seg={s} focus={p.focus} camera={p.camera} />
+            <SegmentView seg={s} focus={p.focus} camera={p.camera} framing={p.framing} />
           </Sequence>
         ))}
         {tint && <AbsoluteFill style={{ background: tint, mixBlendMode: "soft-light" }} />}
@@ -52,7 +70,7 @@ export const Edit: React.FC<EditProps> = (p) => {
       ))}
       {p.titles.map((t, i) => (
         <Sequence key={`title${i}`} {...at(t)}>
-          <TitlePlate item={t} />
+          {p.style?.titles && (t.script || t.caps) ? <ClientTitle item={t} look={p.style.titles} /> : <TitlePlate item={t} />}
         </Sequence>
       ))}
       {(p.stickers ?? []).map((st, i) => (
@@ -65,7 +83,7 @@ export const Edit: React.FC<EditProps> = (p) => {
           <HookTitle hook={p.hook} />
         </Sequence>
       )}
-      <Subtitles style={p.subtitles} />
+      <Subtitles style={p.subtitles} client={p.style?.subtitles} hide={p.titles} hookUntilMs={p.hook?.durationMs ?? 0} />
       {p.music && <Music music={p.music} durationMs={p.durationMs} />}
       <Sfx sfx={p.sfx} />
     </AbsoluteFill>

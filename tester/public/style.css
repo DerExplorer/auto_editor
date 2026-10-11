@@ -76,3 +76,31 @@ video { width: 100%; aspect-ratio: 9/16; background: #000; border-radius: 10px; 
 .area { color: var(--accent); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .area i { color: var(--muted); font-style: normal; font-weight: 500; text-transform: none; letter-spacing: 0; margin-left: 6px; }
 .text { grid-column: 2; }
+
+/* ---------- Нарезка ---------- */
+.cut-top { padding: 12px 16px; }
+.hint-inline { color: var(--muted); font-size: 12px; }
+.mono { font-variant-numeric: tabular-nums; color: var(--muted); }
+.muted { color: var(--muted); font-weight: 400; font-size: 12px; }
+.cut-layout { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 16px; padding: 0 16px 16px; align-items: start; }
+@media (max-width: 860px) { .cut-layout { grid-template-columns: minmax(0, 1fr); } }
+.cut-video video { width: 100%; aspect-ratio: 9/16; max-height: 72vh; object-fit: contain; background: #000; border-radius: 12px; display: block; }
+.cut-timeline { position: relative; height: 34px; margin-top: 10px; background: var(--panel); border-radius: 8px; overflow: hidden; cursor: pointer; }
+.cut-piece { position: absolute; top: 4px; bottom: 4px; background: #3a4150; border-right: 2px solid var(--bg); border-radius: 3px; }
+.cut-piece.active { background: #566179; }
+.cut-piece.dropped { background: repeating-linear-gradient(45deg, #5a2a2a, #5a2a2a 4px, #3a1f1f 4px, #3a1f1f 8px); }
+.cut-mark { position: absolute; top: 0; bottom: 0; background: rgba(230, 70, 70, 0.55); pointer-events: none; }
+.cut-mark.pending { background: rgba(255, 193, 99, 0.45); }
+.cut-note-dot { position: absolute; top: 0; width: 3px; bottom: 0; background: var(--accent); pointer-events: none; }
+.cut-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; z-index: 2; pointer-events: none; }
+.cut-words { margin-top: 8px; min-height: 2.8em; line-height: 1.4; font-size: 14px; color: var(--muted); }
+.cut-words b { color: var(--accent); font-weight: 700; }
+.cut-side { display: grid; gap: 12px; }
+.cut-box { background: var(--panel); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 8px; }
+.cut-box h3 { margin: 0; font-size: 14px; }
+.cut-box input[type=text] { background: var(--bg); color: var(--text); border: 1px solid #333842; border-radius: 10px; padding: 8px 10px; font: inherit; width: 100%; }
+.fix, .rem { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.fix:first-child, .rem:first-child { border-top: none; }
+.fix .t, .rem .t { font-variant-numeric: tabular-nums; color: var(--muted); cursor: pointer; }
+.rem.restored { color: var(--accent); }
+.fix button, .rem button { padding: 4px 10px; font-size: 12px; }

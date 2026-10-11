@@ -34,6 +34,11 @@ if (py) {
   const r = spawnSync(py.cmd, [...py.pre, "-c", "import faster_whisper; print(faster_whisper.__version__)"], { encoding: "utf-8" });
   const pip = `${[py.cmd, ...py.pre].join(" ")} -m pip install -r requirements.txt`;
   check("faster-whisper", r.status === 0, r.status === 0 ? r.stdout.trim() : "не установлен", mac ? `${pip}  (если pip ругается на «externally managed» — сделайте venv, см. README)` : pip);
+  // детектор лица (кадрирование и проверка «текст не на лице»): OpenCV + модель YuNet в tools/faces/
+  const cv = spawnSync(py.cmd, [...py.pre, "-c", "import cv2; print(cv2.__version__)"], { encoding: "utf-8" });
+  check("opencv (лицо)", cv.status === 0, cv.status === 0 ? cv.stdout.trim() : "не установлен", pip);
+  const yunet = path.join(APP, "..", "tools", "faces", "face_detection_yunet_2023mar.onnx");
+  check("модель лица YuNet", fs.existsSync(yunet), "", "скачать face_detection_yunet_2023mar.onnx из github.com/opencv/opencv_zoo в tools/faces/");
 }
 
 check("npm-зависимости", fs.existsSync(path.join(APP, "node_modules", "remotion")), "", "npm ci");

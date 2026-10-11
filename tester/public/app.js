@@ -240,3 +240,7 @@ const load = async (url) => {
 };
 load("/api/tests").then(renderTests).catch((e) => { $("#empty").hidden = false; $("#empty").textContent = `Не удалось загрузить тесты: ${e.message}`; });
 load("/api/roadmap").then(renderPlan).catch(() => {});
+
+// открыть вкладку по адресу: http://localhost:8765/#cut, #plan
+const fromHash = document.querySelector(`[data-tab="${location.hash.slice(1)}"]`);
+if (fromHash) fromHash.click();

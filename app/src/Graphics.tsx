@@ -1,8 +1,9 @@
 import React from "react";
 import { AbsoluteFill, Easing, Img, interpolate, Loop, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { SOFT_TEXT_SHADOW } from "./Subtitles";
-import { C, FONT_HEAD, FONT_TEXT } from "./theme";
-import type { BRollContent, BRollItem, CardItem, Hook, Inset, OverlayItem, StickerItem, TitleItem } from "./types";
+import { C, colorOf, FONT_HEAD, FONT_TEXT, fontOf } from "./theme";
+import { measure, placeX, rand, useFontsReady, ZONE } from "./textLayout";
+import type { BRollContent, BRollItem, CardItem, ClientStyle, Hook, Inset, OverlayItem, StickerItem, TextStyle, TitleItem, TitleWord } from "./types";
 
 // Безопасные зоны (доли кадра), разметка — docs/safe-zones: по бокам 70 px, сверху и снизу по 250 px.
 export const SAFE = { top: 250 / 1920, side: 70 / 1080, bottom: 250 / 1920 };
@@ -81,8 +82,9 @@ export const HookTitle: React.FC<{ hook: Hook }> = ({ hook }) => {
         {lines.map((line, li) => (
           <div key={li} style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: base * 0.02 }}>
             {line.map(({ w, i }) => {
-              // первое слово видно сразу, остальные въезжают по очереди
-              const p = i === 0 ? 1 : spring({ frame: frame - i * 4, fps, config: { damping: 13, mass: 0.6 } });
+              // слово въезжает, когда его произносят (atMs), без привязки — по очереди; первое видно сразу
+              const at = w.atMs != null ? Math.round((w.atMs / 1000) * fps) : i * 4;
+              const p = i === 0 && w.atMs == null ? 1 : frame < at ? 0 : spring({ frame: frame - at, fps, config: { damping: 13, mass: 0.6 } });
               const fontSize = base * HOOK_SIZE[w.size];
               return (
                 <span
@@ -470,6 +472,138 @@ export const Sticker: React.FC<{ item: StickerItem }> = ({ item }) => {
       }}
     >
       <OffthreadVideo src={staticFile(item.src)} muted transparent style={{ width: "100%", height: "100%" }} />
+    </div>
+  );
+};
+
+// ---------- Заголовок в стиле клиента ----------
+
+// Ключевая фраза по центру: рукописный скрипт сверху + ЗАГЛАВНЫЕ снизу (styles/<имя>.mjs → titles).
+// Строки слегка заходят друг на друга, как в эталонах; любая из двух может отсутствовать.
+const textLook = (t: TextStyle, base: number, colorOverride?: string): React.CSSProperties => ({
+  fontFamily: fontOf(t.font),
+  fontSize: base * t.sizePct,
+  color: colorOf(colorOverride ?? t.color),
+  ...(t.stroke ? { WebkitTextStroke: `${t.stroke}em ${colorOf(colorOverride ?? t.color)}`, paintOrder: "stroke fill" } : {}),
+});
+
+// «Разговорный» заголовок: слова появляются, когда звучат, и копятся. Стоит в зоне субтитров (нижняя треть, textLayout.ts):
+// строки лесенкой — то правее, то левее, не по линейке; слишком длинная строка делится на две (правая часть выше, левая ниже).
+const SpokenTitle: React.FC<{ item: TitleItem; look: NonNullable<ClientStyle["titles"]> }> = ({ item, look }) => {
+  const frame = useCurrentFrame();
+  const { fps, width, height } = useVideoConfig();
+  const base = Math.min(width, height);
+  const { exit } = useInOut(item.outToMs - item.outFromMs, 5);
+  const script = item.hook && look.hookScript ? look.hookScript : look.script;
+  // одно длинное слово заглавными на своей строке — крупнее (узкий шрифт: выше, но не шире акцента)
+  const lone = new Set((item.lines ?? []).filter((l) => l.length === 1 && l[0].look === "caps" && l[0].text.length >= 8).map((l) => l[0]));
+  const styleOf = (w: TitleWord): TextStyle =>
+    w.look === "script" ? script : w.look === "accent" && look.accent ? look.accent : lone.has(w) ? { ...look.caps, sizePct: look.caps.sizePct * 1.25 } : look.caps;
+  useFontsReady([script, look.caps, look.accent ?? look.caps], base);
+  const gapX = base * 0.022;
+  const wordW = (w: TitleWord, k: number) => measure(w.look === "script" && k === 0 ? w.text.charAt(0).toUpperCase() + w.text.slice(1) : w.text, styleOf(w), base, w.look !== "script");
+  const lineW = (line: TitleWord[]) => line.reduce((n, w, k) => n + wordW(w, k) + (k ? gapX : 0), 0);
+  const zoneW = ((ZONE.right - ZONE.left) * width) / 1080;
+  // строка шире зоны — делим пополам по ширине
+  const lines: TitleWord[][] = (item.lines ?? []).flatMap((line) => {
+    if (line.length < 2 || lineW(line) <= zoneW) return [line];
+    let best = 1;
+    let bestD = Infinity;
+    for (let i = 1; i < line.length; i++) {
+      const d = Math.abs(lineW(line.slice(0, i)) - lineW(line.slice(i)));
+      if (d < bestD) (best = i), (bestD = d);
+    }
+    return [line.slice(0, best), line.slice(best)];
+  });
+  const seed = Math.round(item.outFromMs / 100);
+  // первая строка — всегда левее: читаем слева направо, главное — слева (правка 11.10)
+  const first = -1;
+  const gapY = base * (look.lineGapPct ?? 0.008);
+  const rows = lines.map((line, li) => {
+    const h = Math.max(...line.map((w) => base * styleOf(w).sizePct));
+    const side = li % 2 ? -first : first;
+    return { line, h, ...placeX(lineW(line), width, side, 0.3 + 0.35 * rand(seed + li + 1)) }; // лесенка без больших скачков
+  });
+  const blockH = rows.reduce((n, r) => n + r.h, 0) + gapY * Math.max(0, rows.length - 1);
+  // по центру зоны субтитров, но низ не ниже безопасной границы
+  const top = Math.min(height * look.centerPct - blockH / 2, height * (look.maxBottomPct ?? ZONE.maxBottomPct) - blockH);
+  return (
+    <div style={{ position: "absolute", left: 0, right: 0, top, opacity: exit, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: gapY, textShadow: SOFT_TEXT_SHADOW }}>
+      {rows.map(({ line, h, x, scale }, li) => (
+        <div key={li} style={{ display: "flex", columnGap: gapX, alignItems: "baseline", height: h, whiteSpace: "nowrap", transform: `translateX(${x}px) scale(${scale})`, transformOrigin: "0 50%" }}>
+          {line.map((w, k) => {
+            const at = Math.round((w.atMs / 1000) * fps);
+            const p = frame < at ? 0 : spring({ frame: frame - at, fps, config: { damping: 16, mass: 0.45 } });
+            // акцент — своим широким жирным шрифтом, если он задан в стиле; иначе заглавными акцентного цвета
+            const t = styleOf(w);
+            return (
+              <span
+                key={k}
+                style={{
+                  ...textLook(t, base, w.look === "accent" && !look.accent ? "accent" : undefined),
+                  lineHeight: 1,
+                  textTransform: w.look === "script" ? "none" : "uppercase",
+                  opacity: Math.min(1, p * 1.6),
+                  transform: `translateY(${(1 - p) * base * 0.02}px) scale(${0.88 + 0.12 * p})`,
+                  display: "inline-block",
+                }}
+              >
+                {w.look === "script" && k === 0 ? w.text.charAt(0).toUpperCase() + w.text.slice(1) : w.text}
+              </span>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export const ClientTitle: React.FC<{ item: TitleItem; look: NonNullable<ClientStyle["titles"]> }> = ({ item, look }) => {
+  if (item.lines?.length) return <SpokenTitle item={item} look={look} />;
+  return <StaticClientTitle item={item} look={look} />;
+};
+
+const StaticClientTitle: React.FC<{ item: TitleItem; look: NonNullable<ClientStyle["titles"]> }> = ({ item, look }) => {
+  const { width, height } = useVideoConfig();
+  const base = Math.min(width, height);
+  const { enter, exit } = useInOut(item.outToMs - item.outFromMs, 5);
+  const e = Math.min(1, enter);
+  const script = item.script ?? (!item.caps ? item.text : undefined);
+  const scriptSize = base * look.script.sizePct;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: SIDE,
+        right: SIDE,
+        top: height * look.centerPct,
+        transform: `translateY(-50%) scale(${0.92 + 0.08 * e})`,
+        opacity: Math.min(e, exit),
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        textAlign: "center",
+        textShadow: SOFT_TEXT_SHADOW,
+      }}
+    >
+      {script && (
+        <div style={{ fontFamily: fontOf(look.script.font), fontSize: scriptSize, lineHeight: 1, color: colorOf(look.script.color), position: "relative", zIndex: 1 }}>{script}</div>
+      )}
+      {item.caps && (
+        <div
+          style={{
+            fontFamily: fontOf(look.caps.font),
+            fontSize: base * look.caps.sizePct,
+            lineHeight: 1,
+            color: colorOf(item.capsColor ?? look.caps.color),
+            marginTop: script ? -scriptSize * (look.overlapPct ?? 0.3) : 0,
+            textTransform: "uppercase",
+            textWrap: "balance",
+          }}
+        >
+          {item.caps}
+        </div>
+      )}
     </div>
   );
 };

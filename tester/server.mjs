@@ -49,7 +49,8 @@ const probe = (file) => {
   return info;
 };
 
-const safeName = (name) => /^[\w.\- ]+$/u.test(name) && !name.includes("..");
+// имена роликов — буквы любого алфавита, цифры, пробел, точка, дефис, тире, скобки, запятая, кавычки, ! ?; без выхода из папки
+const safeName = (name) => /^[\p{L}\p{N}_.\- —(),«»!?+']+$/u.test(name) && !name.includes("..");
 
 const listTests = () => {
   const tests = readJson(path.join(OUTPUT, "tests.json"), []);
@@ -59,6 +60,47 @@ const listTests = () => {
     return { ...t, exists, file: exists ? probe(mp4) : null, stats: exists ? readJson(path.join(OUTPUT, `${t.name}.stats.json`), null) : null };
   });
 };
+
+// ---------- нарезка: проекты с авто-нарезкой (edit-файлы с sections[].keep) ----------
+
+const APP = path.join(ROOT, "app");
+const FIXES = path.join(OUTPUT, "cutfix");
+
+const cutProjects = () =>
+  fs
+    .readdirSync(path.join(APP, "edits"))
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => ({ file: f, edit: readJson(path.join(APP, "edits", f), null) }))
+    .filter(({ edit }) => edit?.sections?.some((s) => s.keep))
+    .map(({ file, edit }) => ({ id: path.basename(file, ".json"), name: edit.output ?? edit.name, input: edit.inputs?.[0] }));
+
+// Куски ролика (время в готовом и в сыром), слова по времени готового, вырезанные фразы из плана autocut.
+const cutProject = (id) => {
+  const edit = readJson(path.join(APP, "edits", `${id}.json`), null);
+  const props = readJson(path.join(APP, "build", edit?.name ?? id, "9x16.props.json"), null);
+  if (!edit || !props) return null;
+  const words = props.subtitles.blocks.flatMap((b) => (b.words ?? []).filter((w) => !w.br).map((w) => ({ t: w.startMs, text: w.text })));
+  const rawName = path.basename(edit.inputs[0]);
+  const planFile = [path.join(ROOT, "training", "alex_raw", `${rawName}.plan.json`), path.join(ROOT, "input", `${edit.inputs[0]}.plan.json`)].find((p) => fs.existsSync(p));
+  const plan = planFile ? readJson(planFile, null) : null;
+  return {
+    id,
+    name: edit.output ?? edit.name,
+    durationMs: props.durationMs,
+    pieces: props.segments.map((s) => ({ outFrom: s.outFromMs, outTo: s.outToMs, srcFrom: s.srcFromMs, srcTo: s.srcToMs })),
+    words,
+    removed: plan ? plan.sentences.filter((s) => !s.keep).map((s) => ({ id: s.id, from: s.from, to: s.to, text: s.text, note: s.note ?? s.take ?? "" })) : [],
+    fix: readJson(path.join(FIXES, `${id}.json`), { cut: [], dropPieces: [], restore: [], notes: [] }),
+  };
+};
+
+const readBody = (req) =>
+  new Promise((ok, fail) => {
+    let s = "";
+    req.on("data", (d) => (s += d));
+    req.on("end", () => ok(s));
+    req.on("error", fail);
+  });
 
 const send = (res, code, body, type = "application/json; charset=utf-8") => {
   res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store" });
@@ -95,6 +137,21 @@ const server = http.createServer((req, res) => {
     if (p === "/api/tests") return send(res, 200, listTests());
     if (p === "/api/roadmap") return send(res, 200, readJson(path.join(OUTPUT, "roadmap.json"), { done: [], todo: [] }));
     if (p === "/api/info") return send(res, 200, { output: OUTPUT });
+    if (p === "/api/cuts") return send(res, 200, cutProjects());
+    if (p.startsWith("/api/cut/")) {
+      const id = p.slice("/api/cut/".length);
+      if (!/^[\w\-]+$/.test(id)) return send(res, 400, { error: "имя" });
+      if (req.method === "POST") {
+        return readBody(req).then((body) => {
+          const fix = JSON.parse(body);
+          fs.mkdirSync(FIXES, { recursive: true });
+          fs.writeFileSync(path.join(FIXES, `${id}.json`), JSON.stringify({ ...fix, savedAt: new Date().toISOString() }, null, 1));
+          send(res, 200, { ok: true });
+        });
+      }
+      const data = cutProject(id);
+      return data ? send(res, 200, data) : send(res, 404, { error: "нет проекта или сборки" });
+    }
     if (p.startsWith("/video/")) {
       const name = p.slice("/video/".length);
       const file = path.join(OUTPUT, name);

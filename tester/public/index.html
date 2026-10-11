@@ -9,6 +9,7 @@
 <body>
 <nav>
   <button class="on" data-tab="tests">Тесты</button>
+  <button data-tab="cut">Нарезка</button>
   <button data-tab="plan">План: что есть и что добавить</button>
 </nav>
 
@@ -38,6 +39,52 @@
   <p class="empty" id="empty" hidden>Тестов пока нет — список берётся из <code>output/tests.json</code>.</p>
 </section>
 
+<section class="tab" id="tab-cut">
+  <div class="cut-top row">
+    <select id="cut-project"></select>
+    <span class="hint-inline">Пробел — пауза · ← → — 1 с · , . — кадр · I / O — начало / конец отрезка · X — вырезать отрезок · D — убрать кусок целиком · N — заметка</span>
+  </div>
+  <div class="cut-layout">
+    <div class="cut-video">
+      <video id="cut-video" playsinline preload="auto"></video>
+      <div class="cut-timeline" id="cut-timeline"><div class="cut-playhead" id="cut-playhead"></div></div>
+      <div class="cut-words" id="cut-words"></div>
+    </div>
+    <div class="cut-side">
+      <div class="row">
+        <button id="cut-play">▶</button>
+        <button data-cj="-1">−1 с</button>
+        <button data-cj="1">+1 с</button>
+        <button data-cf="-1">‹ кадр</button>
+        <button data-cf="1">кадр ›</button>
+        <span id="cut-time" class="mono">0:00.0</span>
+      </div>
+      <div class="cut-box">
+        <h3>Вырезать отрезок</h3>
+        <div class="row">
+          <button id="cut-in">I — начало</button>
+          <button id="cut-out">O — конец</button>
+          <span id="cut-range" class="mono">—</span>
+        </div>
+        <input id="cut-comment" type="text" placeholder="почему (необязательно): лишнее, неудачный дубль, затянуто…">
+        <div class="row">
+          <button id="cut-add" class="on">✂ Вырезать</button>
+          <button id="cut-drop">Убрать текущий кусок</button>
+          <button id="cut-note">📝 Заметка в этот момент</button>
+        </div>
+      </div>
+      <div class="cut-box">
+        <h3>Мои правки <span id="cut-status" class="muted"></span></h3>
+        <div id="cut-fixes"></div>
+      </div>
+      <div class="cut-box">
+        <h3>Вырезано автоматически <span class="muted">— «вернуть», если зря</span></h3>
+        <div id="cut-removed"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="tab" id="tab-plan">
   <div class="plan">
     <div class="col"><h2>Следует добавить <span id="todo-n"></span></h2><div id="todo"></div></div>
@@ -57,5 +104,6 @@
 </template>
 
 <script type="module" src="app.js"></script>
+<script type="module" src="cut.js"></script>
 </body>
 </html>

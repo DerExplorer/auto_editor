@@ -1,0 +1,21 @@
+{
+  "name": "test4_1",
+  "output": "TEST4.1",
+  "style": "alex",
+  "inputs": ["Старые исходники/TestReels1.MP4"],
+  "mood": { "name": "calm", "strength": 2 },
+  "music": "auto",
+  "cut": { "removePauses": false, "removeRetakes": false },
+  "focus": { "x": 0.5, "y": 0.45 },
+  "titles": [
+    { "start": { "ms": 0 }, "end": { "phrase": "о которых", "offsetMs": -100 }, "script": "Раньше было", "caps": "лучше?" },
+    { "start": "слишком пессимистично", "end": { "phrase": "Итак", "offsetMs": -100 }, "script": "думают", "caps": "слишком пессимистично" },
+    { "start": "Вопрос первый", "end": { "phrase": "За последние", "offsetMs": -100 }, "caps": "вопрос первый" },
+    { "start": "Правильный ответ", "end": { "phrase": "Вопрос второй", "offsetMs": -150 }, "script": "Правильный ответ", "caps": "вариант В", "capsColor": "accent" },
+    { "start": "заканчивают начальную школу", "end": { "phrase": "А", "after": "начальную школу", "offsetMs": -100 }, "script": "Заканчивают", "caps": "начальную школу" },
+    { "start": "Вопрос пятый", "end": { "phrase": "Сколько людей", "offsetMs": -100 }, "caps": "вопрос пятый" },
+    { "start": "имеют доступ", "end": { "phrase": "Вариант А", "after": "электричеству", "offsetMs": -100 }, "script": "Доступ", "caps": "к электричеству" },
+    { "start": "вот из этой книжки", "end": { "phrase": "оставлю", "offsetMs": -100 }, "script": "Вот из этой", "caps": "книжки" },
+    { "start": "Подписывайся", "end": { "ms": 79200 }, "script": "Подписывайся", "caps": "здесь много интересного" }
+  ]
+}

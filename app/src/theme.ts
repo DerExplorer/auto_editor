@@ -2,7 +2,7 @@
 // Палитра клиента ("client" в edit-файле → props.palette, см. scripts/palette.mjs) заменяет эти цвета.
 import { loadFont } from "@remotion/fonts";
 import { getInputProps, staticFile } from "remotion";
-import type { Palette } from "./types";
+import type { ClientStyle, Palette } from "./types";
 
 const DEFAULT: Palette = {
   accent: "#FFC163",
@@ -17,7 +17,8 @@ const DEFAULT: Palette = {
   blob: "#E3E3E3",
 };
 
-const pal: Palette = { ...DEFAULT, ...(getInputProps() as { palette?: Partial<Palette> }).palette };
+const input = getInputProps() as { palette?: Partial<Palette>; style?: ClientStyle | null };
+const pal: Palette = { ...DEFAULT, ...input.palette };
 
 export const C = {
   ...pal,
@@ -40,3 +41,10 @@ for (const [family, file] of [
   loadFont({ family, url: staticFile(`fonts/${file}-cyrillic.woff2`), weight: "100 900", unicodeRange: CYR });
   loadFont({ family, url: staticFile(`fonts/${file}-latin.woff2`), weight: "100 900", unicodeRange: LAT });
 }
+
+// Шрифты стиля клиента (styles/<имя>.mjs → props.style.fonts)
+for (const { family, src } of Object.values(input.style?.fonts ?? {})) loadFont({ family, url: staticFile(src) });
+
+// Цвет из стиля клиента: "accent" — акцент палитры, иначе как есть
+export const colorOf = (c: string) => (c === "accent" ? pal.accent : c);
+export const fontOf = (key: string) => `"${input.style?.fonts?.[key]?.family ?? key}", "Inter Tight", Arial, sans-serif`;

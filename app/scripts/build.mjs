@@ -6,13 +6,14 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { integratedLufs, listAudio, normalizeFinal, prepareMusic, processVoice, scanLibrary } from "./audio.mjs";
-import { loudness, makeIntensity, planCamera } from "./camera.mjs";
+import { loudness, makeIntensity, planCamera, planJumpCamera } from "./camera.mjs";
 import { isVideo, makeProxy } from "./media.mjs";
 import { resolveMood } from "./mood.mjs";
 import { buildBlocks, draftSubs } from "./subs.mjs";
 import { pythonCmd, requireTools } from "./tools.mjs";
+import { faceCheck, planFraming } from "./framing.mjs";
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = path.resolve(APP, "..");
@@ -45,6 +46,8 @@ if (!editPath) {
   process.exit(1);
 }
 const doRender = argv.includes("--render");
+// проверка «текст не на лице»: всегда при рендере, при сборке — с --check; отключить — --no-facecheck
+const doFaceCheck = !argv.includes("--no-facecheck") && (doRender || argv.includes("--check"));
 const edit = JSON.parse(fs.readFileSync([path.resolve(CWD, editPath), path.resolve(APP, editPath)].find((x) => fs.existsSync(x)) ?? editPath, "utf-8"));
 const name = edit.name ?? path.basename(editPath, ".json");
 
@@ -59,7 +62,16 @@ const brand = (() => {
   for (const k of ["mood", "music"]) if (edit[k] === undefined && b.defaults?.[k] != null) edit[k] = b.defaults[k];
   return b;
 })();
-const palette = brand?.palette ? Object.fromEntries(["accent", "accentDeep", "onAccent", "highlight", "ink", "text", "muted", "bg", "grey", "blob"].map((k) => [k, brand.palette[k]]).filter(([, v]) => v)) : null;
+// Стиль клиента в коде: app/styles/<имя>.mjs ("style" или "client" в edit-файле) — шрифты, субтитры, заголовки, камера, звук.
+const styleName = edit.style ?? edit.client;
+const stylePath = styleName ? path.join(APP, "styles", `${styleName}.mjs`) : null;
+const style = stylePath && fs.existsSync(stylePath) ? (await import(pathToFileURL(stylePath).href)).default : null;
+if (edit.style && !style) throw new Error(`Нет файла стиля ${stylePath}`);
+if (style) console.log(`  стиль: ${style.name ?? styleName}`);
+
+const PALETTE_KEYS = ["accent", "accentDeep", "onAccent", "highlight", "ink", "text", "muted", "bg", "grey", "blob"];
+const pickPalette = (p) => Object.fromEntries(PALETTE_KEYS.map((k) => [k, p?.[k]]).filter(([, v]) => v));
+const palette = brand?.palette || style?.palette ? { ...pickPalette(brand?.palette), ...pickPalette(style?.palette) } : null;
 
 // ---------- исходники ----------
 
@@ -73,6 +85,9 @@ const transcribe = (file) => {
   // Улучшенная копия (*.ai.mp4) — со звуком оригинала: берём распознавание оригинала, чтобы фразы совпадали
   const orig = /\.ai\.mp4$/i.test(file) && fs.readdirSync(path.dirname(file)).find((f) => f !== path.basename(file) && f.replace(/\.[^.]+$/, "").toLowerCase() === path.basename(file).replace(/\.ai\.mp4$/i, "").toLowerCase());
   if (orig) file = path.join(path.dirname(file), orig);
+  // распознавание из autocut (<файл>.words.json рядом с видео) — то же, по которому резали: фразы и слова совпадут
+  const side = `${file}.words.json`;
+  if (fs.existsSync(side)) return JSON.parse(fs.readFileSync(side, "utf-8")).words.map(({ text, startMs, endMs }) => ({ text, startMs, endMs }));
   const st = fs.statSync(file);
   const fd = fs.openSync(file, "r");
   const head = Buffer.alloc(Math.min(st.size, 4 << 20));
@@ -296,7 +311,9 @@ const build = () => {
     const E = Math.min(clip.durationMs, s.to != null ? secAnchor(s.to, ci) : clip.durationMs);
     const cuts = [...removeRanges[ci]];
     let ranges;
-    if (clip.words.length === 0) ranges = subtract([S, E], cuts);
+    // готовая нарезка (npm run autocut): куски сырого заданы явно, в мс исходника
+    if (s.keep) ranges = s.keep.map(([a, b]) => [Math.max(S, a), Math.min(E, b)]).filter(([a, b]) => b > a);
+    else if (clip.words.length === 0) ranges = subtract([S, E], cuts);
     else {
       const inSec = clip.words.map((w, i) => ({ w, i })).filter(({ w }) => mid(w) >= S && mid(w) < E);
       const kept = inSec.filter(({ i }) => !dropped[ci].has(i)).map(({ w }) => w);
@@ -317,20 +334,22 @@ const build = () => {
   });
 
   const punch = edit.punchIn ?? 1;
+  // скорость всего ролика (у Алекса ×1,2): кусок длится в ролике (b − a) / speed
+  const speed = edit.speed ?? style?.cut?.speed ?? 1;
   const segs = [];
   let t = 0;
   sections.forEach((sec, si) =>
     sec.ranges.forEach(([a, b], k) => {
       const c = clips[sec.clip];
-      segs.push({ clip: sec.clip, section: si, src: c.src, voiceSrc: c.voiceSrc, srcFromMs: a, srcToMs: b, outFromMs: t, outToMs: t + (b - a), punch: k % 2 ? punch : 1 });
-      t += b - a;
+      segs.push({ clip: sec.clip, section: si, src: c.src, voiceSrc: c.voiceSrc, srcFromMs: a, srcToMs: b, outFromMs: t, outToMs: t + (b - a) / speed, punch: k % 2 ? punch : 1, speed });
+      t += (b - a) / speed;
     }),
   );
   const durationMs = t;
 
   const toOut = (clip, ms, dir) => {
     const inside = segs.find((s) => s.clip === clip && ms >= s.srcFromMs && ms < s.srcToMs);
-    if (inside) return inside.outFromMs + (ms - inside.srcFromMs);
+    if (inside) return inside.outFromMs + (ms - inside.srcFromMs) / inside.speed;
     const same = segs.filter((s) => s.clip === clip);
     const s =
       dir === "forward"
@@ -364,11 +383,13 @@ const build = () => {
   clips.forEach((c, ci) =>
     c.words.forEach((w, i) => {
       if (dropped[ci].has(i)) return;
-      const s = segs.find((x) => x.clip === ci && mid(w) >= x.srcFromMs && mid(w) < x.srcToMs);
+      // кусок — по наибольшему перекрытию: Whisper растягивает границы слов в паузы, середина слова может выпасть из куска
+      const overlap = (x) => Math.min(w.endMs, x.srcToMs) - Math.max(w.startMs, x.srcFromMs);
+      const s = segs.filter((x) => x.clip === ci && overlap(x) > Math.min(120, 0.3 * (w.endMs - w.startMs))).sort((a, b) => overlap(b) - overlap(a))[0];
       if (!s) return;
       const from = Math.max(w.startMs, s.srcFromMs);
       const to = Math.min(w.endMs, s.srcToMs);
-      words.push({ text: w.text, startMs: s.outFromMs + from - s.srcFromMs, endMs: s.outFromMs + to - s.srcFromMs });
+      words.push({ text: w.text, startMs: s.outFromMs + (from - s.srcFromMs) / s.speed, endMs: s.outFromMs + (to - s.srcFromMs) / s.speed });
     }),
   );
   words.sort((a, b) => a.startMs - b.startMs);
@@ -388,7 +409,8 @@ const build = () => {
   }
   const subs = buildBlocks(fs.readFileSync(subsPath, "utf-8"), words);
   console.log(`  субтитры: ${subs.blocks.length} блоков, ${subs.unmatched}/${subs.total} слов без точного совпадения с речью`);
-  for (const w of subs.warnings) console.log(`  ⚠ не влезет в 2 строки: ${w}`);
+  // у субтитров по одному слову (стиль клиента mode "word") строк нет — предупреждение не нужно
+  if (style?.subtitles?.mode !== "word") for (const w of subs.warnings) console.log(`  ⚠ не влезет в 2 строки: ${w}`);
 
   const cards = (edit.cards ?? [])
     .map((c) => ({
@@ -400,7 +422,75 @@ const build = () => {
       answerOutMs: c.answerAt != null ? outAt(c.answerAt) : undefined,
     }))
     .filter(valid);
-  const titles = (edit.titles ?? []).map((x) => ({ ...span(x), text: x.text, position: x.position ?? "top", topPct: x.topPct })).filter(valid);
+  // Слова текстового слоя субтитров (уже исправленные) — из них собираются «разговорные» заголовки.
+  const subWords = subs.blocks.flatMap((b) => (b.words ?? []).filter((w) => !w.br));
+  // Заголовок в стиле клиента — точно те слова, что звучат на его отрезке: копятся по одному по мере речи.
+  // script — сколько первых слов писать скриптом (текстом: "Три привычки"), accent — слова акцентным цветом.
+  const spokenTitle = (x, sp) => {
+    const spoken = subWords.filter((w) => w.startMs >= sp.outFromMs - 60 && w.startMs < sp.outToMs);
+    if (!spoken.length) return null;
+    // short — сжатая формулировка (в начале ролика — коротко и понятно, не дословно): слово появляется, когда звучит
+    // похожее слово (по началу), иначе — чуть позже предыдущего
+    let ws = spoken;
+    if (x.short) {
+      let j = 0;
+      let last = spoken[0].startMs;
+      // «|» в short — перенос строки в этом месте
+      ws = x.short.replace(/\|/g, " | ").split(/\s+/).filter(Boolean).map((text) => {
+        if (text === "|") return { br: true };
+        const stem = norm(text).slice(0, 5);
+        const k = spoken.findIndex((w, i) => i >= j && norm(w.text).slice(0, 5) === stem);
+        if (k >= 0) (j = k + 1), (last = spoken[k].startMs);
+        else last += 250;
+        return { text, startMs: last };
+      });
+    }
+    const nScript = x.script ? x.script.split(/\s+/).filter(Boolean).length : 0;
+    const accent = new Set((x.accent ?? []).map((a) => norm(a)));
+    // слова выплывают сразу, быстро по очереди (staggerMs), не дожидаясь, пока их скажут, — без долгих пауз (правка 11.10);
+    // если речь быстрее — слово не отстаёт от неё
+    // если до следующих субтитров долго — слова идут медленнее, почти со скоростью чтения (чуть быстрее), но не дольше
+    // staggerMaxMs на слово; в конце остаётся holdMs, чтобы дочитать (правка 11.10)
+    const nWords = ws.filter((w) => !w.br).length;
+    const free = (sp.outToMs - sp.outFromMs - (style?.titles?.holdMs ?? 1000)) / Math.max(1, nWords);
+    const stagger = Math.min(style?.titles?.staggerMaxMs ?? 260, Math.max(style?.titles?.staggerMs ?? 160, free));
+    let n = 0;
+    const items = ws.map((w) => {
+      if (w.br) return w;
+      const i = n++;
+      return { text: w.text, atMs: Math.round(Math.min(i * stagger, Math.max(0, (w.startMs ?? 0) - sp.outFromMs))), look: i < nScript ? "script" : accent.has(norm(w.text)) ? "accent" : "caps" };
+    });
+    // разные выражения подряд одним цветом не красим (правка 11.10): акцент сразу после скрипта — белыми заглавными
+    items.forEach((it, i) => {
+      const prev = items.slice(0, i).reverse().find((p) => !p.br);
+      if (it.look === "accent" && prev?.look === "script") it.look = "caps";
+    });
+    // строки: скрипт — первой строкой, заглавные — по 2–4 слова (до ~20 знаков) или по «|»
+    const lines = [];
+    let cur = [];
+    let len = 0;
+    for (const it of items) {
+      if (it.br) {
+        if (cur.length) (lines.push(cur), (cur = []), (len = 0));
+        continue;
+      }
+      const newLine = cur.length && ((cur[0].look === "script") !== (it.look === "script") || (!x.short?.includes("|") && it.look !== "script" && len + it.text.length > 20));
+      if (newLine) (lines.push(cur), (cur = []), (len = 0));
+      cur.push(it);
+      len += it.text.length + 1;
+    }
+    if (cur.length) lines.push(cur);
+    return lines;
+  };
+  // script / caps — строки заголовка в стиле клиента (styles/<имя>.mjs → titles); text — обычная плашка
+  const titles = (edit.titles ?? [])
+    .map((x) => {
+      const sp = span(x);
+      const lines = style?.titles && x.spoken !== false && (x.script || x.caps) ? spokenTitle(x, sp) : null;
+      // hook — заголовок в самом начале ролика: скрипт крупнее и читаемее (titles.hookScript в стиле)
+      return { ...sp, text: x.text, script: x.script, caps: x.caps, capsColor: x.capsColor, lines, hook: sp.outFromMs < 500 || undefined, position: x.position ?? "top", topPct: x.topPct };
+    })
+    .filter(valid);
   const broll = (edit.broll ?? [])
     .map((b) => ({
       ...span(b),
@@ -456,15 +546,20 @@ const build = () => {
     const s = segs.find((x) => outMs >= x.outFromMs && outMs < x.outToMs);
     if (!s) return 0;
     const r = clips[s.clip].rms;
-    return r[Math.min(r.length - 1, Math.max(0, Math.floor((s.srcFromMs + outMs - s.outFromMs) / 100)))] ?? 0;
+    return r[Math.min(r.length - 1, Math.max(0, Math.floor((s.srcFromMs + (outMs - s.outFromMs) * s.speed) / 100)))] ?? 0;
   };
   const cam = { enabled: true, maxWithOverlay: 1.1, maxWithInset: 1.04, ...mood?.camera, ...edit.camera };
-  const camera = cam.enabled
-    ? {
-        keys: planCamera(durationMs, makeIntensity(durationMs, rmsAt, words), subs.blocks.map((b) => b.fromMs), cam),
-        caps: [...cards, ...titles, ...(inset ? [inset] : [])].map((x) => ({ outFromMs: x.outFromMs, outToMs: x.outToMs, max: x === inset ? cam.maxWithInset : cam.maxWithOverlay })),
-      }
-    : { keys: [], caps: [] };
+  const intensity = makeIntensity(durationMs, rmsAt, words);
+  const jump = (edit.camera?.mode ?? style?.camera?.mode) === "jump";
+  const camera = !cam.enabled
+    ? { keys: [], caps: [] }
+    : jump
+      ? // джамп-каты: ограничение под графикой не нужно — крупность меняется только на склейке
+        { keys: planJumpCamera(durationMs, intensity, subs.blocks.map((b) => b.fromMs), { ...style?.camera, ...edit.camera }), caps: [] }
+      : {
+          keys: planCamera(durationMs, intensity, subs.blocks.map((b) => b.fromMs), cam),
+          caps: [...cards, ...titles, ...(inset ? [inset] : [])].map((x) => ({ outFromMs: x.outFromMs, outToMs: x.outToMs, max: x === inset ? cam.maxWithInset : cam.maxWithOverlay })),
+        };
 
   // Музыка — ровный фон одного уровня: relDb ниже голоса (по умолчанию −14 дБ, как в TEST3.6), без приглушения под речь.
   // "auto" — самый ровный трек папки настроения (наименьший LRA из music/tracks.json, npm run music-index),
@@ -504,7 +599,7 @@ const build = () => {
   }
 
   // Звуковые эффекты: авто на события монтажа + ручные на фразы. Варианты из папки чередуются по кругу.
-  const sfxCfg = { auto: true, volume: 0.5, minGapMs: 500, ...mood?.sfx, ...edit.sfx };
+  const sfxCfg = { auto: true, volume: 0.5, minGapMs: 500, ...mood?.sfx, ...style?.sfx, ...edit.sfx };
   const lib = scanLibrary(sfxCfg.dir ? path.resolve(ROOT, sfxCfg.dir) : SFX_DIR);
   const ALIAS = {
     whoosh: ["whoosh", "swoosh", "transition"],
@@ -574,10 +669,15 @@ const build = () => {
       `${missing.size ? ` (нет в библиотеке: ${[...missing].join(", ")})` : ""}, музыка: ${music ? music.name : "нет"}`,
   );
 
+  // кадрирование по лицу (средне-общий план, лицо ближе к центру); "framing": false — кадр как есть
+  const fr = planFraming(segs, edit.framing ?? style?.framing ?? {}, frameSize(clips[0]));
+  if (fr?.info) console.log(`  ${fr.info}`);
+
   return {
     ...frameSize(clips[0]),
     durationMs,
-    focus: { x: 0.5, y: 0.5, ...edit.focus },
+    focus: { x: 0.5, y: 0.5, ...fr?.focus, ...edit.focus },
+    framing: fr?.framing ?? null,
     segments: segs,
     broll,
     overlays: overlays.map(({ sound, ...o }) => o),
@@ -588,11 +688,16 @@ const build = () => {
     cards,
     camera,
     inset,
-    hook: edit.hook ? { durationMs: 3000, ...edit.hook } : null,
+    hook: edit.hook ? syncHook({ durationMs: 3000, ...edit.hook }, subWords) : null,
     grade: mood?.grade ?? null,
     layout: { topPct: edit.layout?.topPct ?? 0.09 }, // как DEFAULT_TOP в Graphics.tsx
     bottomGradient: edit.bottomGradient === false ? null : { heightPct: 0.34, opacity: 0.78, ...edit.bottomGradient },
     palette,
+    style: style && {
+      fonts: Object.fromEntries(Object.entries(style.fonts ?? {}).map(([k, file]) => [k, { family: `client-${k}`, src: publish(findMedia(file), "fonts/client") }])),
+      subtitles: style.subtitles,
+      titles: style.titles,
+    },
     subtitles: {
       bottomPct: edit.subtitles?.bottomPct ?? 0.24,
       maxWidthPct: edit.subtitles?.maxWidthPct ?? 0.69,
@@ -602,6 +707,23 @@ const build = () => {
     },
   };
 };
+
+// Хук: слово появляется, когда его произносят (совпадение по тексту в первые секунды), и слова копятся.
+function syncHook(hook, ws) {
+  let k = 0;
+  const words = hook.words.map((w) => {
+    const target = norm(w.text);
+    const parts = w.text.split(/\s+/).length;
+    for (let j = k; j < ws.length && ws[j].startMs < hook.durationMs + 2000; j++) {
+      if (norm(ws[j].text) === norm(w.text.split(/\s+/)[0]) || norm(ws[j].text) === target) {
+        k = j + parts;
+        return { ...w, atMs: ws[j].startMs };
+      }
+    }
+    return w;
+  });
+  return { ...hook, words };
+}
 
 // ---------- запуск ----------
 
@@ -618,6 +740,16 @@ console.log(
   `[9x16] ${props.width}x${props.height}, ${(srcMs / 1000).toFixed(1)}s → ${(props.durationMs / 1000).toFixed(1)}s, ` +
     `${props.segments.length} кусков, ${props.cards.length} карточек, ${props.camera.keys.length - 1} движений камеры, ${props.broll.length} b-roll → ${propsPath}`,
 );
+
+let faces = null;
+if (doFaceCheck) {
+  const tCheck = Date.now();
+  console.log("  проверка лица: текст не должен закрывать лицо...");
+  const r = faceCheck(propsPath, path.join("build", name));
+  mark("faceCheckMs", tCheck);
+  faces = { checked: r.checked, overlaps: r.spans };
+  if (r.spans.length) console.log(`  ⚠ кадры с наложением: build/${name}/facecheck/`);
+}
 
 if (doRender) {
   const out = path.join(OUT, `${edit.output ?? name}.mp4`);
@@ -643,6 +775,8 @@ if (doRender) {
     video: { width: props.width, height: props.height, durationMs: props.durationMs, sourceMs: srcMs, sizeBytes: fs.statSync(out).size },
     audio: { loudness, music: props.music ? { track: props.music.name, relDb: edit.music?.relDb ?? md?.music?.relDb ?? -14 } : null, sfx: props.sfx.length },
     mood: md ? `${md.label} ${md.strength}/5` : null,
+    framing: props.framing,
+    faces,
     elements: {
       segments: props.segments.length, cards: props.cards.length, titles: props.titles.length, broll: props.broll.length,
       overlays: props.overlays?.length ?? 0, stickers: props.stickers?.length ?? 0, subtitleBlocks: props.subtitles.blocks.length,

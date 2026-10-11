@@ -45,6 +45,23 @@ export const makeIntensity = (durationMs, rmsAt, words) => {
   };
 };
 
+// Резкая смена крупности (джамп-кат): общий план ↔ ближе, мгновенно, на начале фразы.
+// Интервал короче при напряжённой речи. Ключи с rampMs: 0 — без перехода.
+export const planJumpCamera = (durationMs, intensity, snapPoints, { punch = [1.15, 1.22], everyMs = [5000, 8000] } = {}) => {
+  const keys = [{ atMs: 0, scale: 1, rampMs: 0 }];
+  let t = 0;
+  let close = false;
+  for (;;) {
+    const target = t + lerp(everyMs[1], everyMs[0], intensity(t + 3000, 6000));
+    const at = snapPoints.filter((p) => p > t + everyMs[0] * 0.7 && Math.abs(p - target) < 2000).sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0] ?? target;
+    if (at > durationMs - 2000) break;
+    close = !close;
+    keys.push({ atMs: at, scale: close ? lerp(punch[0], punch[1], intensity(at, 1500)) : 1, rampMs: 0 });
+    t = at;
+  }
+  return keys;
+};
+
 // Ключи {atMs, scale, rampMs}: база 100%, плавный наезд до ~107% на начале блока, удержание, возврат.
 export const planCamera = (durationMs, intensity, snapPoints, cfg = {}) => {
   const {
